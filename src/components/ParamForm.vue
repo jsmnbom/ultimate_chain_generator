@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { JsonSchema, JsonSchemaProperty, ShapeOption, FieldError } from "../lib/protocol";
-import ShapeSelect from "./ShapeSelect.vue";
+import type { FieldError, JsonSchema, JsonSchemaProperty, ShapeOption } from '../lib/protocol'
+import { computed } from 'vue'
+import ShapeSelect from './ShapeSelect.vue'
 
 const props = defineProps<{
-  schema: JsonSchema;
-  modelValue: Record<string, number | string>;
-  fieldErrors: FieldError[];
-}>();
+  schema: JsonSchema
+  modelValue: Record<string, number | string>
+  fieldErrors: FieldError[]
+}>()
 
-const emit = defineEmits<{ "update:modelValue": [Record<string, number | string>] }>();
+const emit = defineEmits<{ 'update:modelValue': [Record<string, number | string>] }>()
 
 // Nuxt UI's size scale, shared by the form field and its controls. The schema's
 // `size` hint carries these tokens directly; unset falls back to the default.
-type UiSize = "xs" | "sm" | "md" | "lg" | "xl";
-const DEFAULT_SIZE: UiSize = "sm";
+type UiSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+const DEFAULT_SIZE: UiSize = 'sm'
 function resolveSize(size?: string): UiSize {
-  return (size as UiSize) ?? DEFAULT_SIZE;
+  return (size as UiSize) ?? DEFAULT_SIZE
 }
 
 // A field is either a slider (numeric) or a dropdown. The discriminator is the
@@ -24,32 +24,32 @@ function resolveSize(size?: string): UiSize {
 // the dropdown, "slider" the slider. A new widget kind is a new branch here. When
 // `widget` is absent we fall back structurally (has `options` -> dropdown).
 interface SliderField {
-  kind: "slider";
-  name: string;
-  label: string;
-  description?: string;
-  size: UiSize;
-  unit?: string;
+  kind: 'slider'
+  name: string
+  label: string
+  description?: string
+  size: UiSize
+  unit?: string
   // Slider bounds: the comfortable range (json_schema_extra min/max).
-  sliderMin: number;
-  sliderMax: number;
+  sliderMin: number
+  sliderMax: number
   // Number-input bounds: the hard validation limits (pydantic ge/le, i.e.
   // minimum/maximum). These are wider than the slider, so a value can be typed
   // past the slider's range but is still clamped to what the model accepts.
-  inputMin: number;
-  inputMax: number;
-  step: number;
-  isInt: boolean;
+  inputMin: number
+  inputMax: number
+  step: number
+  isInt: boolean
 }
 interface SelectField {
-  kind: "select";
-  name: string;
-  label: string;
-  description?: string;
-  size: UiSize;
-  options: ShapeOption[];
+  kind: 'select'
+  name: string
+  label: string
+  description?: string
+  size: UiSize
+  options: ShapeOption[]
 }
-type Field = SliderField | SelectField;
+type Field = SliderField | SelectField
 
 // A field with a `show_if` hint is rendered only when the current model value
 // matches every entry in it (e.g. brim_diameter shows only when brim === "ears",
@@ -57,42 +57,43 @@ type Field = SliderField | SelectField;
 // by membership; a scalar by equality.
 // Reading modelValue here makes the computed re-evaluate as values change.
 function matchesShowIf(actual: unknown, expected: unknown): boolean {
-  return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+  return Array.isArray(expected) ? expected.includes(actual) : actual === expected
 }
 function isVisible(p: JsonSchemaProperty): boolean {
-  if (!p.show_if) return true;
-  return Object.entries(p.show_if).every(([k, v]) => matchesShowIf(props.modelValue[k], v));
+  if (!p.show_if)
+    return true
+  return Object.entries(p.show_if).every(([k, v]) => matchesShowIf(props.modelValue[k], v))
 }
 
 const fields = computed<Field[]>(() =>
   Object.entries(props.schema.properties)
     .filter(([, p]: [string, JsonSchemaProperty]) => isVisible(p))
     .map(([name, p]: [string, JsonSchemaProperty]): Field => {
-      const label = p.label ?? p.title ?? name;
-      const description = p.description;
-      const size = resolveSize(p.size);
-      const widget = p.widget ?? (p.options ? "select" : "slider");
-      if (widget !== "slider" && p.options) {
-        return { kind: "select", name, label, description, size, options: p.options };
+      const label = p.label ?? p.title ?? name
+      const description = p.description
+      const size = resolveSize(p.size)
+      const widget = p.widget ?? (p.options ? 'select' : 'slider')
+      if (widget !== 'slider' && p.options) {
+        return { kind: 'select', name, label, description, size, options: p.options }
       }
-      const isInt = p.type === "integer";
-      const hardMin = p.minimum ?? p.exclusiveMinimum;
-      const hardMax = p.maximum ?? p.exclusiveMaximum;
-      const sliderMin = p.sliderMin ?? hardMin ?? 0;
-      let sliderMax = p.sliderMax ?? hardMax ?? 100;
-      let inputMax = hardMax ?? sliderMax;
+      const isInt = p.type === 'integer'
+      const hardMin = p.minimum ?? p.exclusiveMinimum
+      const hardMax = p.maximum ?? p.exclusiveMaximum
+      const sliderMin = p.sliderMin ?? hardMin ?? 0
+      let sliderMax = p.sliderMax ?? hardMax ?? 100
+      let inputMax = hardMax ?? sliderMax
       // A `slider_max_by` hint tightens the max to depend on another field's
       // current value (e.g. tilt_mult's max varies with cross_section). It is a
       // real constraint here, so it caps both the slider and the number input.
       for (const [field, byValue] of Object.entries(p.slider_max_by ?? {})) {
-        const dyn = byValue[props.modelValue[field] as string];
+        const dyn = byValue[props.modelValue[field] as string]
         if (dyn != null) {
-          sliderMax = dyn;
-          inputMax = dyn;
+          sliderMax = dyn
+          inputMax = dyn
         }
       }
       return {
-        kind: "slider",
+        kind: 'slider',
         name,
         label,
         description,
@@ -104,38 +105,41 @@ const fields = computed<Field[]>(() =>
         inputMax,
         step: p.step ?? (isInt ? 1 : 0.1),
         isInt,
-      };
+      }
     }),
-);
+)
 
 // Map field name -> first error message. Errors with an empty loc are form-level.
 const errorFor = computed<Record<string, string>>(() => {
-  const map: Record<string, string> = {};
+  const map: Record<string, string> = {}
   for (const e of props.fieldErrors) {
-    const key = e.loc[0];
-    if (key && !map[key]) map[key] = e.msg;
+    const key = e.loc[0]
+    if (key && !map[key])
+      map[key] = e.msg
   }
-  return map;
-});
+  return map
+})
 
-const formErrors = computed(() => props.fieldErrors.filter((e) => e.loc.length === 0));
+const formErrors = computed(() => props.fieldErrors.filter(e => e.loc.length === 0))
 
 function setValue(name: string, value: number | string) {
   // UInputNumber re-emits update:model-value on blur, so clicking away from a
   // field (e.g. into the viewer to orbit) fires this with an unchanged value.
   // Bail on no-ops so we don't push an identical params object and trigger a
   // pointless rebuild — which would re-render the scene and reset the camera.
-  if (props.modelValue[name] === value) return;
-  emit("update:modelValue", { ...props.modelValue, [name]: value });
+  if (props.modelValue[name] === value)
+    return
+  emit('update:modelValue', { ...props.modelValue, [name]: value })
 }
 
 function numberFormatOptions(f: SliderField) {
-  if (!f.unit) return { style: "decimal" };
+  if (!f.unit)
+    return { style: 'decimal' }
   return {
-    style: "unit",
+    style: 'unit',
     unit: f.unit,
-    unitDisplay: "narrow"
-  };
+    unitDisplay: 'narrow',
+  }
 }
 </script>
 
@@ -184,8 +188,8 @@ function numberFormatOptions(f: SliderField) {
           :min="f.inputMin"
           :max="f.inputMax"
           :step="f.step"
-          @update:model-value="(v: number) => setValue(f.name, v)"
           :format-options="numberFormatOptions(f)"
+          @update:model-value="(v: number) => setValue(f.name, v)"
         />
       </div>
     </UFormField>

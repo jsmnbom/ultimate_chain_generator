@@ -1,38 +1,38 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { ShapeOption } from "../lib/protocol";
-import ShapePreview from "./ShapePreview.vue";
+import type { ShapeOption } from '../lib/protocol'
+import { computed } from 'vue'
+import ShapePreview from './ShapePreview.vue'
 
 // A rich dropdown for a choice field: each option shows a geometry-derived shape
 // preview. Field-agnostic — the same component renders both the link-outline and
 // the cross-section pickers; the only difference is the `svg` baked into each
 // option by chain.py. A field is rendered with this (vs a slider) purely by having
 // `options`, so there is no per-field widget branching.
-type UiSize = "xs" | "sm" | "md" | "lg" | "xl";
+type UiSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
 const props = withDefaults(
   defineProps<{
-    options: ShapeOption[];
-    modelValue: number | string;
-    size?: UiSize;
+    options: ShapeOption[]
+    modelValue: number | string
+    size?: UiSize
   }>(),
-  { size: "sm" },
-);
+  { size: 'sm' },
+)
 
-const emit = defineEmits<{ "update:modelValue": [number | string] }>();
+const emit = defineEmits<{ 'update:modelValue': [number | string] }>()
 
-const current = computed(() => props.options.find((o) => o.value === props.modelValue));
+const current = computed(() => props.options.find(o => o.value === props.modelValue))
 
 // Preview pixel sizes tracked to the Nuxt UI size, for the trigger (compact) and
 // the dropdown rows (larger). The "sm" pair keeps the original 20 / 28 px.
-const PREVIEW_PX: Record<UiSize, { trigger: number; item: number }> = {
+const PREVIEW_PX: Record<UiSize, { trigger: number, item: number }> = {
   xs: { trigger: 16, item: 24 },
   sm: { trigger: 20, item: 28 },
   md: { trigger: 24, item: 34 },
   lg: { trigger: 30, item: 42 },
   xl: { trigger: 36, item: 50 },
-};
-const previewPx = computed(() => PREVIEW_PX[props.size]);
+}
+const previewPx = computed(() => PREVIEW_PX[props.size])
 </script>
 
 <template>

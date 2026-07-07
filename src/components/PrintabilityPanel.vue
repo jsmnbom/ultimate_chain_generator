@@ -1,32 +1,32 @@
 <script setup lang="ts">
-import type { PrintabilityReport, ReportStatus } from "../lib/protocol";
+import type { PrintabilityReport, ReportStatus } from '../lib/protocol'
 
 // Generic renderer for an analysis report: an overall verdict banner followed by
 // a flat list of labelled value/status findings. Nothing here is chain-specific —
 // it draws whatever items the report carries (see chain.py `analyze`).
-defineProps<{ report: PrintabilityReport }>();
+defineProps<{ report: PrintabilityReport }>()
 
 // Colored classes for the collapsed verdict header (the always-visible summary).
 const HEADER_CLASS: Record<ReportStatus, string> = {
-  ok: "bg-green-50 text-green-700 ring-green-200",
-  warning: "bg-amber-50 text-amber-700 ring-amber-200",
-  error: "bg-red-50 text-red-700 ring-red-200",
-};
+  ok: 'bg-green-50 text-green-700 ring-green-200',
+  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
+  error: 'bg-red-50 text-red-700 ring-red-200',
+}
 const ALERT_ICON: Record<ReportStatus, string> = {
-  ok: "i-lucide-circle-check",
-  warning: "i-lucide-triangle-alert",
-  error: "i-lucide-circle-x",
-};
+  ok: 'i-lucide-circle-check',
+  warning: 'i-lucide-triangle-alert',
+  error: 'i-lucide-circle-x',
+}
 const ITEM_ICON: Record<ReportStatus, string> = {
-  ok: "i-lucide-check",
-  warning: "i-lucide-triangle-alert",
-  error: "i-lucide-x",
-};
+  ok: 'i-lucide-check',
+  warning: 'i-lucide-triangle-alert',
+  error: 'i-lucide-x',
+}
 const ITEM_CLASS: Record<ReportStatus, string> = {
-  ok: "text-green-600",
-  warning: "text-amber-600",
-  error: "text-red-600",
-};
+  ok: 'text-green-600',
+  warning: 'text-amber-600',
+  error: 'text-red-600',
+}
 </script>
 
 <template>
@@ -66,7 +66,9 @@ const ITEM_CLASS: Record<ReportStatus, string> = {
               }}<span v-if="item.unit" class="ml-0.5 text-xs font-normal text-neutral-500">{{ item.unit }}</span>
             </span>
           </div>
-          <p v-if="item.detail" class="mt-1 text-xs text-neutral-500">{{ item.detail }}</p>
+          <p v-if="item.detail" class="mt-1 text-xs text-neutral-500">
+            {{ item.detail }}
+          </p>
         </li>
       </ul>
     </template>

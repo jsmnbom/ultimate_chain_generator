@@ -2,12 +2,12 @@
 // shareable by link. Pure (no DOM): App.vue owns the reactive `useUrlSearchParams`
 // bridge and just calls these to translate.
 
-import type { JsonSchema } from "./protocol";
+import type { JsonSchema } from './protocol'
 
-type Params = Record<string, number | string>;
+type Params = Record<string, number | string>
 
 function isNumeric(type: string | undefined): boolean {
-  return type === "integer" || type === "number";
+  return type === 'integer' || type === 'number'
 }
 
 /**
@@ -16,13 +16,14 @@ function isNumeric(type: string | undefined): boolean {
  * Keys not present in the schema are dropped.
  */
 export function encodeParams(params: Params, schema: JsonSchema): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = {}
   for (const [name, prop] of Object.entries(schema.properties)) {
-    const value = params[name];
-    if (value === undefined || value === prop.default) continue;
-    out[name] = String(value);
+    const value = params[name]
+    if (value === undefined || value === prop.default)
+      continue
+    out[name] = String(value)
   }
-  return out;
+  return out
 }
 
 /**
@@ -32,11 +33,11 @@ export function encodeParams(params: Params, schema: JsonSchema): Record<string,
  * the URL encoding); an all-default chain is just `"chain"`.
  */
 export function exportFilename(params: Params, schema: JsonSchema): string {
-  const changed = encodeParams(params, schema);
+  const changed = encodeParams(params, schema)
   const parts = Object.entries(changed).map(
-    ([key, value]) => `${key}-${value.replace(/[^a-zA-Z0-9.]+/g, "_")}`,
-  );
-  return parts.length ? `chain_${parts.join("_")}` : "chain";
+    ([key, value]) => `${key}-${value.replace(/[^a-z0-9.]+/gi, '_')}`,
+  )
+  return parts.length ? `chain_${parts.join('_')}` : 'chain'
 }
 
 /**
@@ -49,17 +50,20 @@ export function decodeParams(
   query: Record<string, string | string[]>,
   schema: JsonSchema,
 ): Params {
-  const out: Params = {};
+  const out: Params = {}
   for (const [name, prop] of Object.entries(schema.properties)) {
-    const raw = query[name];
-    if (raw === undefined) continue;
-    const value = Array.isArray(raw) ? raw[0] : raw;
+    const raw = query[name]
+    if (raw === undefined)
+      continue
+    const value = Array.isArray(raw) ? raw[0] : raw
     if (isNumeric(prop.type)) {
-      const n = Number(value);
-      if (!Number.isNaN(n)) out[name] = n;
-    } else {
-      out[name] = value;
+      const n = Number(value)
+      if (!Number.isNaN(n))
+        out[name] = n
+    }
+    else {
+      out[name] = value
     }
   }
-  return out;
+  return out
 }

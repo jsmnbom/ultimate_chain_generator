@@ -1,5 +1,6 @@
-import { compileSchema, type JsonSchema as LibJsonSchema } from "json-schema-library";
-import type { JsonSchema, JsonSchemaProperty } from "./protocol";
+import type { JsonSchema as LibJsonSchema } from 'json-schema-library'
+import type { JsonSchema, JsonSchemaProperty } from './protocol'
+import { compileSchema } from 'json-schema-library'
 
 /**
  * Resolve a raw JSON Schema (as emitted by pydantic's `model_json_schema()`) into
@@ -15,17 +16,17 @@ import type { JsonSchema, JsonSchemaProperty } from "./protocol";
  * The property's siblings always win, so nothing authored in chain.py is lost.
  */
 export function resolveSchema(raw: unknown): JsonSchema {
-  const schema = raw as JsonSchema;
-  const root = compileSchema(schema as unknown as LibJsonSchema);
+  const schema = raw as JsonSchema
+  const root = compileSchema(schema as unknown as LibJsonSchema)
 
-  const properties: Record<string, JsonSchemaProperty> = {};
+  const properties: Record<string, JsonSchemaProperty> = {}
   for (const [name, rawProp] of Object.entries(schema.properties)) {
-    const resolved = root.getNodeChild(name)?.node?.schema;
-    const target = resolved && typeof resolved === "object" ? (resolved as JsonSchemaProperty) : {};
-    const { $ref: _ref, ...siblings } = rawProp as JsonSchemaProperty & { $ref?: unknown };
-    properties[name] = { ...target, ...siblings };
+    const resolved = root.getNodeChild(name)?.node?.schema
+    const target = resolved && typeof resolved === 'object' ? (resolved as JsonSchemaProperty) : {}
+    const { $ref: _ref, ...siblings } = rawProp as JsonSchemaProperty & { $ref?: unknown }
+    properties[name] = { ...target, ...siblings }
   }
 
-  const { $defs: _defs, ...rest } = schema;
-  return { ...rest, properties };
+  const { $defs: _defs, ...rest } = schema
+  return { ...rest, properties }
 }

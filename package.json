@@ -1,8 +1,8 @@
 {
   "name": "ultimate-chain-generator",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:mock": "VITE_MOCK_WORKER=1 vite",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.116",
+    "@iconify/vue": "^5.0.1",
     "@nuxt/icon": "^2.3.1",
     "@nuxt/ui": "^4.9.0",
     "@vueuse/core": "^14.3.0",
@@ -23,7 +24,9 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@antfu/eslint-config": "^9.1.0",
     "@vitejs/plugin-vue": "^6.0.7",
+    "eslint": "^10.5.0",
     "pyodide": "314.0.2",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3",
