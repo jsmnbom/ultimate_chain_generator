@@ -1,0 +1,39 @@
+[
+  {
+    "name": "Default",
+    "description": "The stock chain \u2014 a balanced starting point.",
+    "params": {
+      "link_shape": "chamfered",
+      "cross_section": "octagon",
+      "link_count": 6,
+      "link_length": 25.0,
+      "link_width": 13.0,
+      "link_thickness": 3.5,
+      "tilt_mult": 1,
+      "brim": "none",
+      "brim_diameter": 8.0
+    }
+  },
+  {
+    "name": "Chunky (placeholder)",
+    "description": "TODO: verified \u2014 short, thick links.",
+    "params": {
+      "link_count": 5,
+      "link_length": 30.0,
+      "link_width": 18.0,
+      "link_thickness": 5.0,
+      "cross_section": "hexagon"
+    }
+  },
+  {
+    "name": "Fine (placeholder)",
+    "description": "TODO: verified \u2014 many slim links.",
+    "params": {
+      "link_count": 12,
+      "link_length": 18.0,
+      "link_width": 9.0,
+      "link_thickness": 2.5,
+      "cross_section": "dodecagon"
+    }
+  }
+]

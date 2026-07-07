@@ -1,0 +1,22 @@
+# Node / Vite
+node_modules/
+dist/
+*.local
+
+# Python (uv)
+.venv/
+__pycache__/
+*.pyc
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Nuxt UI / auto-import generated types
+components.d.ts
+auto-imports.d.ts
+.nuxt-ui/
+
+# Tool caches
+.ruff_cache/

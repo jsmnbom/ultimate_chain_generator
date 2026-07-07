@@ -1,0 +1,249 @@
+{
+  "description": "Parameters for a line chain of interlocking links (all lengths in mm).",
+  "properties": {
+    "link_shape": {
+      "default": "chamfered",
+      "enum": [
+        "rect",
+        "chamfered",
+        "rounded"
+      ],
+      "label": "Link shape",
+      "options": [
+        {
+          "description": "Sharp 90\u00b0 corners.",
+          "label": "Rectangle",
+          "svg": {
+            "paths": [
+              "M 2.0,-1.2 L 2.0,1.2 L -2.0,1.2 L -2.0,-1.2 L 2.0,-1.2"
+            ],
+            "viewBox": "-2.045 -1.245 4.09 2.49"
+          },
+          "value": "rect"
+        },
+        {
+          "description": "Corners cut flat at 45\u00b0 \u2014 a sturdy default.",
+          "label": "Chamfered rect",
+          "svg": {
+            "paths": [
+              "M 2.0,-0.6 L 2.0,0.6 L 1.4,1.2 L -1.4,1.2 L -2.0,0.6 L -2.0,-0.6 L -1.4,-1.2 L 1.4,-1.2 L 2.0,-0.6"
+            ],
+            "viewBox": "-2.045 -1.245 4.09 2.49"
+          },
+          "value": "chamfered"
+        },
+        {
+          "description": "Smoothly filleted corners.",
+          "label": "Rounded rect",
+          "svg": {
+            "paths": [
+              "M 1.4,-1.2 A 0.6,0.6 0.0 0,1 2.0,-0.6 L 2.0,0.6 A 0.6,0.6 180.0 0,1 1.4,1.2 L -1.4,1.2 A 0.6,0.6 0.0 0,1 -2.0,0.6 L -2.0,-0.6 A 0.6,0.6 180.0 0,1 -1.4,-1.2 L 1.4,-1.2"
+            ],
+            "viewBox": "-2.045 -1.245 4.09 2.49"
+          },
+          "value": "rounded"
+        }
+      ],
+      "size": "lg",
+      "title": "Link Shape",
+      "type": "string"
+    },
+    "cross_section": {
+      "default": "octagon",
+      "enum": [
+        "square",
+        "hexagon",
+        "octagon",
+        "decagon",
+        "dodecagon"
+      ],
+      "label": "Cross-section",
+      "options": [
+        {
+          "description": "4 sides \u2014 chunky, angular links.",
+          "label": "Square",
+          "svg": {
+            "paths": [
+              "M 0.0,1.0 L -1.0,0.0 L -0.0,-1.0 L 1.0,-0.0 L 0.0,1.0"
+            ],
+            "viewBox": "-1.045 -1.045 2.09 2.09"
+          },
+          "value": "square"
+        },
+        {
+          "description": "6 sides \u2014 a middle ground.",
+          "label": "Hexagon",
+          "svg": {
+            "paths": [
+              "M 0.0,1.0 L -0.866025,0.5 L -0.866025,-0.5 L -0.0,-1.0 L 0.866025,-0.5 L 0.866025,0.5 L 0.0,1.0"
+            ],
+            "viewBox": "-0.911025 -1.045 1.822051 2.09"
+          },
+          "value": "hexagon"
+        },
+        {
+          "description": "8 sides \u2014 smooth and reliable, the default.",
+          "label": "Octagon",
+          "svg": {
+            "paths": [
+              "M 0.0,1.0 L -0.707107,0.707107 L -1.0,0.0 L -0.707107,-0.707107 L -0.0,-1.0 L 0.707107,-0.707107 L 1.0,-0.0 L 0.707107,0.707107 L 0.0,1.0"
+            ],
+            "viewBox": "-1.045 -1.045 2.09 2.09"
+          },
+          "value": "octagon"
+        },
+        {
+          "description": "10 sides \u2014 rounder; unlocks the tilt multiplier.",
+          "label": "Decagon",
+          "svg": {
+            "paths": [
+              "M 0.0,1.0 L -0.587785,0.809017 L -0.951057,0.309017 L -0.951057,-0.309017 L -0.587785,-0.809017 L -0.0,-1.0 L 0.587785,-0.809017 L 0.951057,-0.309017 L 0.951057,0.309017 L 0.587785,0.809017 L 0.0,1.0"
+            ],
+            "viewBox": "-0.996057 -1.045 1.992113 2.09"
+          },
+          "value": "decagon"
+        },
+        {
+          "description": "12 sides \u2014 roundest, with the most tilt range.",
+          "label": "Dodecagon",
+          "svg": {
+            "paths": [
+              "M 0.0,1.0 L -0.5,0.866025 L -0.866025,0.5 L -1.0,0.0 L -0.866025,-0.5 L -0.5,-0.866025 L -0.0,-1.0 L 0.5,-0.866025 L 0.866025,-0.5 L 1.0,-0.0 L 0.866025,0.5 L 0.5,0.866025 L 0.0,1.0"
+            ],
+            "viewBox": "-1.045 -1.045 2.09 2.09"
+          },
+          "value": "dodecagon"
+        }
+      ],
+      "size": "lg",
+      "title": "Cross Section",
+      "type": "string"
+    },
+    "link_count": {
+      "default": 6,
+      "description": "Number of links in the chain.",
+      "label": "Link count",
+      "maximum": 60,
+      "minimum": 1,
+      "sliderMax": 40,
+      "sliderMin": 1,
+      "step": 1,
+      "title": "Link Count",
+      "type": "integer",
+      "unit": null,
+      "widget": "slider"
+    },
+    "link_length": {
+      "default": 25.0,
+      "description": "Long axis of each link. Must be at least the link width.",
+      "exclusiveMinimum": 0,
+      "label": "Link length",
+      "maximum": 120.0,
+      "sliderMax": 80,
+      "sliderMin": 5,
+      "step": 0.5,
+      "title": "Link Length",
+      "type": "number",
+      "unit": null,
+      "widget": "slider"
+    },
+    "link_width": {
+      "default": 13.0,
+      "description": "Short axis of each link. Must be at least the thickness.",
+      "exclusiveMinimum": 0,
+      "label": "Link width",
+      "maximum": 60.0,
+      "sliderMax": 40,
+      "sliderMin": 3,
+      "step": 0.5,
+      "title": "Link Width",
+      "type": "number",
+      "unit": "millimeter",
+      "widget": "slider"
+    },
+    "link_thickness": {
+      "default": 3.5,
+      "description": "Bar diameter of each link \u2014 thinner links open a print gap between neighbours; too thick and they fuse.",
+      "exclusiveMinimum": 0,
+      "label": "Link thickness",
+      "maximum": 20.0,
+      "sliderMax": 15,
+      "sliderMin": 0.5,
+      "step": 0.1,
+      "title": "Link Thickness",
+      "type": "number",
+      "unit": "millimeter",
+      "widget": "slider"
+    },
+    "tilt_mult": {
+      "default": 1,
+      "description": "How many cross-section faces to skip when tilting each link.",
+      "label": "Tilt multiplier",
+      "maximum": 3,
+      "minimum": 1,
+      "show_if": {
+        "cross_section": [
+          "decagon",
+          "dodecagon"
+        ]
+      },
+      "size": "xs",
+      "sliderMax": 3,
+      "sliderMin": 1,
+      "slider_max_by": {
+        "cross_section": {
+          "decagon": 2,
+          "dodecagon": 3
+        }
+      },
+      "step": 1,
+      "title": "Tilt Mult",
+      "type": "integer",
+      "unit": null,
+      "widget": "slider"
+    },
+    "brim": {
+      "default": "none",
+      "description": "Adds small discs under each link to widen bed contact and prevent lifting on hard-to-print settings.",
+      "enum": [
+        "none",
+        "ears"
+      ],
+      "label": "Brim",
+      "options": [
+        {
+          "description": "No brim.",
+          "label": "None",
+          "value": "none"
+        },
+        {
+          "description": "Thin discs at each link's contact points.",
+          "label": "Mouse ears",
+          "value": "ears"
+        }
+      ],
+      "title": "Brim",
+      "type": "string"
+    },
+    "brim_diameter": {
+      "default": 8.0,
+      "description": "Diameter of each mouse-ear disc.",
+      "exclusiveMinimum": 0,
+      "label": "Brim diameter",
+      "maximum": 30.0,
+      "show_if": {
+        "brim": "ears"
+      },
+      "size": "xs",
+      "sliderMax": 15,
+      "sliderMin": 4,
+      "step": 0.5,
+      "title": "Brim Diameter",
+      "type": "number",
+      "unit": "millimeter",
+      "widget": "slider"
+    }
+  },
+  "title": "Parameters",
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+[project]
+name = "ultimate-chain-generator"
+version = "0.1.0"
+description = "A tool to generate 3d printed chains."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+# These pins mirror what the browser (Pyodide) runtime installs, so the static
+# Python assets in `public/python/` are authored and linted against the exact
+# same API surface that runs in the worker. See src/worker/pyodide.worker.ts.
+dependencies = [
+  "build123d==0.11.1",
+  "ocp-tessellate==3.1.2",
+  "orca123d==0.1.1",
+  "pydantic>=2.13.4",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.15.16", "cadquery-ocp-stubs>=7.9.3.1.1"]
+
+[tool.ruff]
+indent-width = 2
+
+[tool.ruff.lint]
+# Linting/type-checking is handled by Pylance (Pyright) in the editor; ruff is
+# used here only for formatting. An empty `select` disables every lint rule, so
+# `ruff check` is a no-op. See .vscode/settings.json for the Pylance setup.
+select = []
+
+[tool.ruff.format]
+indent-style = "space"
