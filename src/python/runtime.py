@@ -23,15 +23,21 @@ from ocp_tessellate.tessellator import get_edges, get_faces, get_vertices
 from ocp_tessellate.utils import numpy_to_json
 from pydantic import ValidationError
 
+from proto import Design, Report, load_model
+
 # ``get_distance`` / ``get_properties`` come from measure.py, exec'd into globals
-# at boot just like chain.py's ``Parameters`` / ``build`` (see the worker's
-# initialize()). Referenced as injected globals for the same reason.
+# at boot just like the model module (see the worker's initialize()). Referenced
+# as injected globals for the same reason.
+
+# The one Design subclass the loaded model module defines (chain.py's Chain at
+# boot; a Code-tab module after reload_model). All schema/build/export/analyze
+# flows go through this handle — the seam, bound in one place instead of reaching
+# for loose globals. ``chain.py`` was exec'd into these globals before runtime.py.
+Model = load_model(globals())
 
 # --------------------------------------------------------------------------- #
 # Helpers called by the worker (params cross the boundary as JSON strings)
 # --------------------------------------------------------------------------- #
-
-_LAST_BUILT = {"obj": None}
 
 # Measurement-tool backend state, refreshed on every ``show``:
 #   solids: tessellated leaf id -> (base_shape, location). The id is the same one
@@ -48,13 +54,40 @@ _MEASURE = {"solids": {}, "cache": {}, "tool": None}
 
 def get_schema_json() -> str:
   """The JSON Schema that drives the form."""
-  return json.dumps(Parameters.model_json_schema())  # type: ignore[no-untyped-call] (from chain.py)
+  return json.dumps(Model.Parameters.model_json_schema())
 
 
 def get_presets_json() -> str:
   """Curated starting-point presets for the form's preset picker, or ``[]`` when
-  the loaded module defines none. See chain.py's ``PRESETS``."""
-  return json.dumps(globals().get("PRESETS", []))
+  the loaded model defines none (see ``Design.PRESETS``)."""
+  return json.dumps(Model.PRESETS)
+
+
+def reload_model(source: str) -> str:
+  """Swap in a new model module without rebooting Pyodide: exec ``source`` in a
+  fresh namespace, rebind ``Model`` to its ``Design`` subclass, and return the
+  fresh ``{"schema", "presets"}`` for the form. Used by dev hot-reload of
+  ``chain.py`` and, in the same shape, by the future Code tab (editor contents in
+  place of the file). On failure the exception propagates and ``Model`` is left
+  untouched (rebind happens only after a successful load)."""
+  global Model
+  # Exec into this module's own globals (``__main__`` in the worker) so pydantic
+  # can resolve the model's forward refs via a registered module namespace — a
+  # bare dict would leave ``Parameters`` "not fully defined". First drop any
+  # previously-loaded Design subclass so a *renamed* model (Code tab) doesn't
+  # collide with its predecessor under load_model's one-model rule.
+  g = globals()
+  for name in [
+    n
+    for n, v in list(g.items())
+    if isinstance(v, type) and v is not Design and issubclass(v, Design)
+  ]:
+    del g[name]
+  exec(compile(source, "<model>", "exec"), g)
+  Model = load_model(g)
+  return json.dumps(
+    {"schema": Model.Parameters.model_json_schema(), "presets": Model.PRESETS}
+  )
 
 
 def _validation_errors(exc: ValidationError):
@@ -245,30 +278,24 @@ def build_and_show(params_json: str) -> str:
   list is returned for inline display on the form."""
   data = json.loads(params_json)
   try:
-    params = Parameters(**data)  # type: ignore[no-untyped-call] (from chain.py)
+    params = Model.Parameters(**data)
   except ValidationError as exc:
     return json.dumps({"ok": False, "errors": _validation_errors(exc)})
 
   try:
-    obj = build(params)  # type: ignore[no-untyped-call] (from chain.py)
+    obj = Model(params)  # type: ignore[reportGeneralTypeIssues]
   except Exception as exc:  # geometry error -> surface as a form-level message
     return json.dumps(
       {"ok": False, "errors": [{"loc": [], "msg": str(exc), "type": "build_error"}]}
     )
 
-  _LAST_BUILT["obj"] = obj
   show(obj, progress=None)
 
   # Printability report — never let an analysis failure break a successful build.
   try:
-    report = analyze(params, obj)  # type: ignore[no-untyped-call] (from chain.py)
+    report = obj.analyze().to_dict()
   except Exception as exc:
-    report = {
-      "overall_status": "error",
-      "summary": f"Printability analysis failed: {exc}",
-      "sections": [],
-    }
-  print(f"build_and_show: {report['overall_status']} — {report['summary']}")
+    report = Report.error(f"Printability analysis failed: {exc}").to_dict()
   return json.dumps({"ok": True, "report": report})
 
 
@@ -277,8 +304,8 @@ def export_bytes(params_json: str, fmt: str):
   Rebuilding (rather than reusing the last shown object) keeps exports in sync
   with the current form even if the last render was for different params."""
   data = json.loads(params_json)
-  params = Parameters(**data)  # type: ignore[no-untyped-call] (from chain.py)
-  obj = build(params)  # type: ignore[no-untyped-call] (from chain.py)
+  params = Model.Parameters(**data)
+  obj = Model(params) # type: ignore[reportGeneralTypeIssues]
 
   fmt = fmt.upper()
   if fmt == "STEP":

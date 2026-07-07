@@ -19,9 +19,10 @@ function resolveSize(size?: string): UiSize {
   return (size as UiSize) ?? DEFAULT_SIZE;
 }
 
-// A field is either a slider (numeric) or a shape dropdown. The discriminator is
-// purely structural: a property that carries `options` (a choice field) renders as
-// the dropdown; everything else is a slider. No widget-string coupling.
+// A field is either a slider (numeric) or a dropdown. The discriminator is the
+// schema's `widget` hint (see proto.py's field helpers): "shape"/"select" render
+// the dropdown, "slider" the slider. A new widget kind is a new branch here. When
+// `widget` is absent we fall back structurally (has `options` -> dropdown).
 interface SliderField {
   kind: "slider";
   name: string;
@@ -70,7 +71,8 @@ const fields = computed<Field[]>(() =>
       const label = p.label ?? p.title ?? name;
       const description = p.description;
       const size = resolveSize(p.size);
-      if (p.options) {
+      const widget = p.widget ?? (p.options ? "select" : "slider");
+      if (widget !== "slider" && p.options) {
         return { kind: "select", name, label, description, size, options: p.options };
       }
       const isInt = p.type === "integer";

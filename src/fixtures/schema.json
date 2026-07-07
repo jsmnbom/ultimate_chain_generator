@@ -46,7 +46,8 @@
       ],
       "size": "lg",
       "title": "Link Shape",
-      "type": "string"
+      "type": "string",
+      "widget": "shape"
     },
     "cross_section": {
       "default": "octagon",
@@ -117,7 +118,8 @@
       ],
       "size": "lg",
       "title": "Cross Section",
-      "type": "string"
+      "type": "string",
+      "widget": "shape"
     },
     "link_count": {
       "default": 6,
@@ -223,7 +225,8 @@
         }
       ],
       "title": "Brim",
-      "type": "string"
+      "type": "string",
+      "widget": "select"
     },
     "brim_diameter": {
       "default": 8.0,

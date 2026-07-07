@@ -20,6 +20,8 @@ import type {
   WorkerRequest,
   WorkerResponse,
   BuildResult,
+  JsonSchema,
+  Preset,
 } from "../lib/protocol";
 
 const PYODIDE_VERSION = "v314.0.2";
@@ -133,6 +135,15 @@ async function doMeasure(changes: unknown): Promise<Record<string, unknown> | nu
   return resultStr ? (JSON.parse(resultStr) as Record<string, unknown>) : null;
 }
 
+// Dev-only: re-exec the model source (chain.py) into the running interpreter and
+// hand back the fresh schema/presets — no Pyodide reboot. Runs through the
+// scheduler (below) so it can't interleave with an in-flight build.
+async function doReloadModel(source: string): Promise<{ schema: unknown; presets: unknown }> {
+  pyodide.globals.set("_model_src", source);
+  const resultStr: string = await pyodide.runPythonAsync("reload_model(_model_src)");
+  return JSON.parse(resultStr) as { schema: unknown; presets: unknown };
+}
+
 async function doExport(params: unknown, format: string): Promise<Uint8Array> {
   pyodide.globals.set("_params_json", JSON.stringify(params));
   pyodide.globals.set("_fmt", format);
@@ -160,9 +171,34 @@ const measureQueue: { port: MessagePort; changes: unknown }[] = [];
 // The port whose build is running right now, so host_bridge's shapes message
 // (emitted during the build) reaches the correct tab. Set around doBuild only.
 let currentBuildPort: MessagePort | null = null;
+// Dev-only: pending model hot-reload source (set by the HMR handler). Processed
+// with top priority so the new model is live before the next build runs.
+let pendingReload: string | null = null;
 
 function schedule() {
   if (busy || !pyodide) return;
+  if (pendingReload !== null) {
+    const source = pendingReload;
+    pendingReload = null;
+    busy = true;
+    doReloadModel(source)
+      .then(({ schema, presets }) => {
+        const s = schema as JsonSchema;
+        const p = presets as Preset[];
+        // Refresh the cached ready state so tabs connecting after a reload get
+        // the new schema, then tell current tabs to re-render the form.
+        if (bootState.kind === "ready") {
+          bootState = { kind: "ready", msg: { type: "ready", schema: s, presets: p } };
+        }
+        broadcast({ type: "model-reloaded", schema: s, presets: p });
+      })
+      .catch((err) => broadcast({ type: "log", stream: "stderr", text: `model reload failed: ${err?.message ?? err}` }))
+      .finally(() => {
+        busy = false;
+        schedule();
+      });
+    return;
+  }
   const meas = measureQueue.shift();
   if (meas) {
     busy = true;
@@ -287,6 +323,19 @@ initialize().catch((err) => {
 // then spawns a fresh instance on the new (no-cache, dev) code. Tree-shaken from
 // production builds (`import.meta.hot` is statically undefined there).
 if (import.meta.hot) {
+  // The model source (chain.py) is the seam: re-exec it in place instead of
+  // rebooting the whole Pyodide/OCP stack (tens of seconds). This dep-scoped
+  // handler intercepts chain.py?raw changes so they DON'T fall through to the
+  // blanket handler below. It's the same mechanism the future Code tab uses.
+  import.meta.hot.accept("../python/chain.py?raw", (mod) => {
+    const source = (mod as { default?: string } | undefined)?.default;
+    if (source != null) {
+      pendingReload = source;
+      schedule();
+    }
+  });
+  // Any other change (worker code, proto/runtime/measure/install.py) still needs
+  // a fresh interpreter — full reload.
   import.meta.hot.accept(() => {
     broadcast({ type: "reload" });
     (self as unknown as SharedWorkerGlobalScope).close();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, defineAsyncComponent } from "vue";
 import { useClipboard, useDebounceFn, useUrlSearchParams } from "@vueuse/core";
 import { useChainWorker } from "./composables/useChainWorker";
 import { encodeParams, decodeParams, exportFilename } from "./lib/paramsUrl";
@@ -7,7 +7,7 @@ import type { JsonSchema } from "./lib/protocol";
 import BootProgress from "./components/BootProgress.vue";
 import ParamForm from "./components/ParamForm.vue";
 import PrintabilityPanel from "./components/PrintabilityPanel.vue";
-import Viewer from "./components/Viewer.vue";
+const Viewer = defineAsyncComponent(() => import("./components/Viewer.vue"));
 
 const {
   status,
@@ -191,7 +191,14 @@ async function downloadExport(format: "STEP" | "3MF") {
 
       <!-- Right: viewer -->
       <UDashboardPanel id="viewer" class="bg-neutral-100">
-        <Viewer :shapes="shapes" :building="building" :measure="measure" />
+        <Suspense>
+          <Viewer :shapes="shapes" :building="building" :measure="measure" />
+          <template #fallback>
+            <div class="flex h-full items-center justify-center text-sm text-neutral-400">
+              Loading viewer…
+            </div>
+          </template>
+        </Suspense>
       </UDashboardPanel>
     </UDashboardGroup>
   </UApp>

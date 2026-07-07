@@ -81,6 +81,8 @@ export function useChainWorker() {
   let nextId = 1;
   let latestBuildId = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  // Last params we built, so a dev model hot-reload can re-render immediately.
+  let lastParams: Record<string, unknown> | null = null;
   const pendingExports = new Map<
     number,
     { resolve: (b: Uint8Array) => void; reject: (e: Error) => void; format: string }
@@ -141,6 +143,13 @@ export function useChainWorker() {
         // Surface Python stdout/stderr for debugging.
         (msg.stream === "stderr" ? console.warn : console.debug)("[py]", msg.text);
         break;
+      case "model-reloaded":
+        // Dev-only: chain.py was re-exec'd in place (no Pyodide reboot). Swap in
+        // the fresh schema/presets and rebuild with the current params.
+        schema.value = resolveSchema(msg.schema);
+        presets.value = msg.presets ?? [];
+        if (lastParams) build(lastParams);
+        break;
       case "reload":
         // Dev-only: the SharedWorker is closing itself because its code changed
         // (HMR). Reload onto fresh code; the reload spawns a new worker.
@@ -167,7 +176,9 @@ export function useChainWorker() {
       latestBuildId = nextId++;
       building.value = true;
       // Snapshot to a plain object: a Vue reactive proxy isn't structured-cloneable.
-      send({ type: "build", id: latestBuildId, params: { ...params } });
+      const snapshot = { ...params };
+      lastParams = snapshot;
+      send({ type: "build", id: latestBuildId, params: snapshot });
     }, BUILD_DEBOUNCE_MS);
   }
 

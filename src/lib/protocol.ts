@@ -21,18 +21,12 @@ export interface ReportItem {
   status?: ReportStatus;
 }
 
-export interface ReportSection {
-  title: string;
-  status?: ReportStatus;
-  items: ReportItem[];
-}
-
-/** Generic analysis report (see chain.py `analyze`). The panel renders whatever
- *  sections/items it carries, so it is not chain-specific. */
+/** Generic analysis report — the TS mirror of `proto.py`'s `Report.to_dict()`. A
+ *  flat list of findings the panel renders as-is, so it is not chain-specific. */
 export interface PrintabilityReport {
   overall_status: ReportStatus;
   summary: string;
-  sections: ReportSection[];
+  items: ReportItem[];
 }
 
 export interface BuildResult {
@@ -70,6 +64,10 @@ export type WorkerResponse =
   | { type: "export-result"; id: number; format: string; bytes?: Uint8Array; error?: string }
   // A backend_response for the viewer's handleBackendResponse (measure tools).
   | { type: "measure-response"; response: Record<string, unknown> }
+  // Dev-only: the model module (chain.py) was hot-reloaded in place — the Pyodide
+  // stack stayed up. Carries the fresh schema/presets so the form re-renders
+  // without a reboot. Tree-shaken from production (emitted only under import.meta.hot).
+  | { type: "model-reloaded"; schema: JsonSchema; presets: Preset[] }
   // Dev-only HMR signal: the SharedWorker is about to close itself because its
   // code (or a Python asset) changed, so tabs should reload onto fresh code.
   // Never emitted in a production build (the emitting block is tree-shaken).
@@ -86,8 +84,12 @@ export interface JsonSchemaProperty {
   maximum?: number;
   exclusiveMinimum?: number;
   exclusiveMaximum?: number;
-  // widget hints (json_schema_extra)
-  widget?: string;
+  // widget hints (json_schema_extra). `widget` is the discriminator the form
+  // switches on (see ParamForm.vue): "slider" (numeric), "shape" (choice with a
+  // geometry-derived preview SVG), "select" (plain enum/Literal dropdown). New
+  // parameter types add a value here + a branch there. Set by proto.py's
+  // slider_field / choice_field / select_field.
+  widget?: "slider" | "shape" | "select";
   label?: string;
   unit?: string;
   // Nuxt UI size for the field's widgets (e.g. "lg" for the shape pickers, "xs"

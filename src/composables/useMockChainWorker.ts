@@ -69,30 +69,20 @@ export function useMockChainWorker() {
   const MOCK_REPORT: PrintabilityReport = {
     overall_status: "warning",
     summary: "Printable, but check the flagged tolerances before printing.",
-    sections: [
+    items: [
       {
-        title: "Bed contact",
-        items: [
-          {
-            label: "Bed contact per link",
-            value: 30.2,
-            unit: "mm²",
-            detail: "Easy — plenty of bed contact.",
-            status: "ok",
-          },
-        ],
+        label: "Bed contact per link",
+        value: 30.2,
+        unit: "mm²",
+        detail: "Easy — plenty of bed contact.",
+        status: "ok",
       },
       {
-        title: "Link interlock",
-        items: [
-          {
-            label: "Links overlap",
-            value: 1.74,
-            unit: "mm³",
-            detail: "Links touch with no clearance — may fuse. Thin them slightly.",
-            status: "warning",
-          },
-        ],
+        label: "Links overlap",
+        value: 1.74,
+        unit: "mm³",
+        detail: "Links touch with no clearance — may fuse. Thin them slightly.",
+        status: "warning",
       },
     ],
   };

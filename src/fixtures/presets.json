@@ -2,17 +2,7 @@
   {
     "name": "Default",
     "description": "The stock chain \u2014 a balanced starting point.",
-    "params": {
-      "link_shape": "chamfered",
-      "cross_section": "octagon",
-      "link_count": 6,
-      "link_length": 25.0,
-      "link_width": 13.0,
-      "link_thickness": 3.5,
-      "tilt_mult": 1,
-      "brim": "none",
-      "brim_diameter": 8.0
-    }
+    "params": {}
   },
   {
     "name": "Chunky (placeholder)",

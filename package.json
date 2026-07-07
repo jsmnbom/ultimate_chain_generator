@@ -12,6 +12,8 @@
     "gen:wheels": "node scripts/gen-pyodide-wheels.mjs"
   },
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.116",
+    "@nuxt/icon": "^2.3.1",
     "@nuxt/ui": "^4.9.0",
     "@vueuse/core": "^14.3.0",
     "json-schema-library": "^11.6.1",

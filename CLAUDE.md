@@ -30,27 +30,52 @@ round-trip below), rather than running a test suite (there is none).
 Exercise the Python contract natively — same source the worker runs:
 
 ```sh
-uv run python -c "import sys; sys.path.insert(0,'src/python'); import chain; print(chain.build(chain.Parameters()))"
+uv run python -c "import sys; sys.path.insert(0,'src/python'); \
+  import proto, chain; M = proto.load_model(vars(chain)); print(M(M.Parameters()))"
 ```
 
 ## The single-source-of-truth contract
 
-`src/python/chain.py` defines `Parameters` (a pydantic `BaseModel`) and
-`build(params) -> Compound` (plus `analyze()` for the printability report). This
-one module drives **both** the form (via `Parameters.model_json_schema()`) and
-the geometry. This is the deliberate seam the future "Code tab" plugs into — a
-user's own `Parameters`/`build`/`analyze` swaps in with no pipeline changes. Keep
-this contract clean; don't leak chain-specifics into the worker/runtime/frontend.
+The seam is defined in `src/python/proto.py` (the model-authoring **SDK**) and
+implemented by `src/python/chain.py` (the reference model). `proto.py` is the one
+place that states the whole contract — read its module docstring first.
+
+A model module exposes exactly one **`Design` subclass**:
+
+- `class Chain(Design[Parameters])` — the generic arg binds the pydantic
+  `Parameters` type (auto-extracted in `Design.__init_subclass__`), so the form
+  schema is available via `Chain.Parameters.model_json_schema()` before any
+  geometry exists.
+- **Instantiating** `Chain(params)` *builds* the geometry into `self` (a
+  build123d `Compound`, like `BasePartObject`) — construction **is** the build.
+- `Chain.analyze(self) -> Report` (optional) returns the printability report,
+  reading `self` directly. `Chain.PRESETS` (optional) are curated starting points.
+
+`runtime.py` binds to this via `proto.load_model(globals())` — it never reaches
+for loose `build`/`analyze` globals. A user's own `Design` subclass (the future
+Code tab) swaps in with no pipeline changes. Keep the contract clean; don't leak
+chain-specifics into `proto.py`/the worker/runtime/frontend.
 
 - Cross-field rules (`link_width >= link_thickness`, etc.) live in a pydantic
   `@model_validator(mode="after")`, **not** duplicated in JS. The form learns
   about violations by attempting a build and rendering the returned
   `ValidationError` inline. There is no separate client-side validation.
-- Widget hints ride on each `Field` via `json_schema_extra` (see `proto.py`'s
-  `slider_field_extra` / `wire_choice_field_extra`). "How to show the form" stays
-  co-located with the model. The schema→component mapping is in
-  `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens
+- Widget hints ride on each `Field` via `json_schema_extra` — use `proto.py`'s
+  `slider_field` / `choice_field` / `select_field`, each of which stamps a
+  `widget` discriminator (`"slider"`/`"shape"`/`"select"`) the form switches on.
+  Add a new parameter type by adding a helper there + a branch in `ParamForm.vue`.
+  "How to show the form" stays co-located with the model. The schema→component
+  mapping is in `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens
   pydantic's `$ref`/`$defs` first.
+- The printability report is a flat list of findings built with `proto.Report`
+  (`r.add(label, value, ...)`, auto-rolled `overall_status`/`summary`; `value` is
+  numeric). Its `to_dict()` is mirrored by `PrintabilityReport` in `protocol.ts` and
+  rendered generically by `PrintabilityPanel.vue`. Generic finding-builders live in
+  `proto.py` (`check_bed_contact` / `check_interlock` / `check_floating` — they take a
+  `Report` and add a finding, owning default thresholds/wording any model can reuse);
+  model-specific choices (which face is the footprint, brim messaging, the chain's link
+  lean) stay in the model's `analyze`. `Design.analyze`'s default is an empty report —
+  a model opts into checks by calling the helpers.
 - `proto.py`'s `Choice` is a lightweight enum-like whose members are static
   methods (docstring → label/description) and whose SVG previews are generated
   from the *real* build123d outline, so previews can't drift from the geometry.
@@ -68,11 +93,13 @@ touching cross-boundary code.
   tessellated Shapes tree straight to the main thread. Scheduler runs one Python
   call at a time: builds **coalesce to latest-wins**, exports are FIFO, measures
   jump the queue.
-- `src/python/runtime.py` — worker-facing helpers: `get_schema_json`,
-  `build_and_show` (validate → build → tessellate → analyze), `export_bytes`
-  (STEP via build123d; 3MF OrcaSlicer project via orca123d), and the
-  measurement backend for three-cad-viewer's Distance/Properties
-  tools (resolves picked shape ids to in-memory OCP topology, no socket).
+- `src/python/runtime.py` — binds the seam once (`Model = load_model(globals())`)
+  and exposes worker-facing helpers: `get_schema_json`, `build_and_show` (validate
+  → `Model(params)` build → tessellate → `obj.analyze()`), `export_bytes` (STEP via
+  build123d; 3MF OrcaSlicer project via orca123d), `reload_model` (re-exec a new
+  model in place — dev hot-reload / Code-tab entry), and the measurement backend
+  for three-cad-viewer's Distance/Properties tools (resolves picked shape ids to
+  in-memory OCP topology, no socket).
 - `src/composables/useChainWorker.ts` — worker lifecycle + reactive state
   (schema, shapes, building, fieldErrors, report), debounced build, export,
   measure bridge. `useMockChainWorker.ts` is the `dev:mock` stand-in.
@@ -80,9 +107,14 @@ touching cross-boundary code.
   wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`.
 
 Full regeneration on every parameter change (no incremental updates) — each
-change re-runs `build()` and re-tessellates the whole chain. First load compiles
-OCP.wasm (tens of seconds); the boot progress bar covers it and is a separate UI
-state from the sub-second per-build spinner.
+change re-runs `Model(params)` and re-tessellates the whole chain. First load
+compiles OCP.wasm (tens of seconds); the boot progress bar covers it and is a
+separate UI state from the sub-second per-build spinner.
+
+In dev, editing `chain.py` **hot-reloads the model in place** (worker HMR →
+`reload_model` → `model-reloaded` message) without rebooting Pyodide — sub-second,
+no boot bar. Editing any other asset (worker/`proto.py`/`runtime.py`/…) still does
+a full reload. This is the same path the future Code tab drives.
 
 ## Version pinning — these move together
 

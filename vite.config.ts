@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import ui from "@nuxt/ui/vite";
+import { NuxtIconBundle } from '@nuxt/icon/vite';
 
 // Plain Vue 3 + Vite. Fully client-side (no SSR). Pyodide runs in a web worker.
 export default defineConfig({
-  plugins: [vue(), ui()],
+  plugins: [vue(), ui(), NuxtIconBundle(),],
   worker: {
     format: "es",
   },

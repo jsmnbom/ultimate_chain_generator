@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@iconify-json/lucide':
+        specifier: ^1.2.116
+        version: 1.2.116
+      '@nuxt/icon':
+        specifier: ^2.3.1
+        version: 2.3.1(vite@8.1.3(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))
       '@nuxt/ui':
         specifier: ^4.9.0
         version: 4.9.0(178747b3355ca529fddf2b7f37484f97)
@@ -282,6 +288,9 @@ packages:
 
   '@hyperjump/uri@1.3.4':
     resolution: {integrity: sha512-aUVWwu2GtC/cU4DwdTM+b+5jjboM6wft6vNg1+7pUTk/nNRNaBYcYhaEnCir9eRLBbkcGPkiEO7XRUlcDkxj4Q==}
+
+  '@iconify-json/lucide@1.2.116':
+    resolution: {integrity: sha512-mbwPmiUXaZyLMSeQOxiTqz2fmZikD9qiGnMBiev47UUNY9uGCEgMg9iUYwaJzCtJTDtAIyK4vokfIpqsVorgSw==}
 
   '@iconify/collections@1.0.705':
     resolution: {integrity: sha512-JyUTM5/vqZfnUwtM18kh3nUB82A8QYHDLQj5zEZAvgR3hFdZvDhlH0LEdqOYKHWMTNW5l16EiiY2kstuw/EiTQ==}
@@ -2259,6 +2268,10 @@ snapshots:
       idn-hostname: 15.1.10
 
   '@hyperjump/uri@1.3.4': {}
+
+  '@iconify-json/lucide@1.2.116':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@iconify/collections@1.0.705':
     dependencies:
