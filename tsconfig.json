@@ -9,7 +9,7 @@
       "#build/ui/*": ["./node_modules/.nuxt-ui/ui/*"]
     },
     "resolveJsonModule": true,
-    "types": ["vite/client", "@nuxt/icon/client"],
+    "types": ["vite/client", "@nuxt/icon/client", "node"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

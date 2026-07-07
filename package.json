@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.1.0",
+    "@types/node": "^26.1.0",
     "@vitejs/plugin-vue": "^6.0.7",
     "eslint": "^10.5.0",
     "pyodide": "314.0.2",
