@@ -8,7 +8,19 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: process.env.BASE_URL ?? '/',
 
-  plugins: [vue(), ui(), NuxtIconBundle()],
+  plugins: [
+    vue(),
+    ui(),
+    NuxtIconBundle({
+      scan: {
+        globInclude: [
+          'src/**/*.{vue,jsx,tsx,ts,md,mdc,mdx}',
+          'node_modules/@nuxt/ui/dist/**/*.{mjs,js}',
+        ],
+        globExclude: ['**/*.d.ts', '**/*.d.mts'],
+      },
+    }),
+  ],
   worker: {
     format: 'es',
   },
