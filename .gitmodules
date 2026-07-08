@@ -1,0 +1,3 @@
+[submodule "vendor/three-cad-viewer"]
+	path = vendor/three-cad-viewer
+	url = https://github.com/bernhard-42/three-cad-viewer.git
