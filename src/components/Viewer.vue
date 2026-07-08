@@ -2,6 +2,13 @@
 import type { ChangeNotification, Shapes } from 'three-cad-viewer'
 import { Display, Viewer as TCVViewer } from 'three-cad-viewer'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// three-cad-viewer's index.ts imports these as side-effects, but the prod build
+// tree-shakes them out (dev keeps them). Re-import here so the viewer chrome is
+// styled in production. See the css alias in vite.config.ts.
+import 'three-cad-viewer/css/global.css'
+import 'three-cad-viewer/css/ui.css'
+import 'three-cad-viewer/css/treeview.css'
+import 'three-cad-viewer/css/tools.css'
 
 const props = defineProps<{
   shapes: Shapes | null

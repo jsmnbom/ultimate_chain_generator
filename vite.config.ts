@@ -91,9 +91,14 @@ export default defineConfig({
 
   resolve: {
     alias: [
+      // Map the vendored CSS subpath so a consumer can import it explicitly.
+      // index.ts imports these four sheets as side-effects, but Rolldown's prod
+      // build tree-shakes side-effect CSS imports out of the module when only its
+      // named exports (Display/Viewer) are consumed — dev serves them, the build
+      // drops them. Viewer.vue re-imports them through this alias so they survive.
+      { find: /^three-cad-viewer\/css\//, replacement: `${TCV_SRC}/../css/` },
       // Resolve the bare 'three-cad-viewer' import to the vendored source entry
-      // (mirrored by tsconfig's `paths`). Exact-match regex so no subpath is
-      // rewritten — v5's index.ts imports its own CSS, so none is needed.
+      // (mirrored by tsconfig's `paths`).
       { find: /^three-cad-viewer$/, replacement: `${TCV_SRC}/index.ts` },
     ],
   },

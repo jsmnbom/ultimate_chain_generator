@@ -13,6 +13,9 @@ import { useMockChainWorker } from './useMockChainWorker'
 
 export type BootStatus = 'booting' | 'ready' | 'error'
 
+/** The reactive worker bundle App.vue hands down to the async AppContent. */
+export type ChainWorker = ReturnType<typeof useChainWorker>
+
 const BUILD_DEBOUNCE_MS = 120
 
 export function useChainWorker() {
