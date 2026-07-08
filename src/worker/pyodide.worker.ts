@@ -318,10 +318,26 @@ function connect(port: MessagePort) {
 
 initialize().catch((err) => {
   console.error('Pyodide worker failed to initialize:', err)
-  const message = String(err?.stack ?? err?.message ?? err)
-  bootState = { kind: 'error', message }
-  broadcast({ type: 'boot-error', message })
+  bootState = { kind: 'error', message: formatBootError(err) }
+  broadcast({ type: 'boot-error', message: bootState.message })
 })
+
+// Assemble the fullest description we can for the boot-error screen. `.stack`
+// usually already includes the message, but not always (some WASM traps and
+// PythonErrors put the human-readable part on `.message` only), so lead with the
+// message and append the stack when it adds anything beyond it.
+function formatBootError(err: unknown): string {
+  if (err == null)
+    return 'Unknown error'
+  if (typeof err !== 'object')
+    return String(err)
+  const e = err as { name?: string, message?: string, stack?: string }
+  const message = [e.name, e.message].filter(Boolean).join(': ')
+  const stack = e.stack ?? ''
+  if (stack && !stack.includes(e.message ?? '\0'))
+    return [message, stack].filter(Boolean).join('\n\n')
+  return stack || message || String(err)
+}
 
 // Dev only: a SharedWorker survives page reloads, so after editing worker or
 // Python code it would keep serving stale code until every tab closes. On an HMR

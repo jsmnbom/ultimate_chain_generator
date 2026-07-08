@@ -76,8 +76,17 @@ export function useChainWorker() {
   if (typeof SharedWorker === 'undefined') {
     return unsupported('This app needs a current browser (SharedWorker support). Please update.')
   }
+  // Milestone logging so a confused user can screenshot the console for us. Kept
+  // to lifecycle events (not per-build) to avoid drowning the log. The worker is
+  // a SharedWorker, whose own console lives in a separate inspector context — so
+  // these page-thread logs are what actually shows up in a screenshot.
+  const bootStart = performance.now()
+  // eslint-disable-next-line no-console
+  const log = (...args: unknown[]) => console.info('[chain]', ...args)
+
   let port: MessagePort
   try {
+    log('connecting to worker…')
     const sw = new SharedWorker(new URL('../worker/pyodide.worker.ts', import.meta.url), {
       type: 'module',
     })
@@ -112,10 +121,13 @@ export function useChainWorker() {
         bootProgress.value = msg.progress
         break
       case 'boot-error':
+        // First line only — the full trace is on screen and in bootError.
+        log('boot FAILED:', msg.message.split('\n')[0])
         status.value = 'error'
         bootError.value = msg.message
         break
       case 'ready':
+        log(`ready in ${((performance.now() - bootStart) / 1000).toFixed(1)}s`)
         // Dereference pydantic's `$ref`/`$defs` (the enum choice fields) into the
         // flat schema the form renderer reads. See resolveSchema.
         schema.value = resolveSchema(msg.schema)
@@ -153,9 +165,11 @@ export function useChainWorker() {
         measureResponseHandler?.(msg.response)
         break
       case 'log':
-        // Surface Python stdout/stderr for debugging.
+        // Surface Python stdout/stderr for debugging. Use console.log (not
+        // console.debug) for stdout — Chrome hides the Verbose level by default,
+        // so debug-level prints never show up.
         // eslint-disable-next-line no-console
-        (msg.stream === 'stderr' ? console.warn : console.debug)('[py]', msg.text)
+        (msg.stream === 'stderr' ? console.warn : console.log)('[py]', msg.text)
         break
       case 'model-reloaded':
         // Dev-only: chain.py was re-exec'd in place (no Pyodide reboot). Swap in
