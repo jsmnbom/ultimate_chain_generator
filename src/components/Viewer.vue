@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import type { ChangeNotification, Shapes } from 'three-cad-viewer'
-import type { MeasureBridge } from '../composables/useChainWorker'
-import type { MeasureChanges } from '../lib/protocol'
 import { Display, Viewer as TCVViewer } from 'three-cad-viewer'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
   shapes: Shapes | null
   building: boolean
-  measure: MeasureBridge
 }>()
 
 const host = ref<HTMLDivElement | null>(null)
@@ -56,12 +53,10 @@ const viewerOptions = {
   collapse: 1,
 }
 
-// three-cad-viewer's measure tools are backend-driven: on tool activation and on
-// each shape pick the viewer emits change notifications and then waits for real
-// BREP measurements to display. Forward just those two keys to the Python backend
-// (via the measure bridge) and feed its response back through handleBackendResponse.
+// Change-notification callback. v5 measures geometry with its own built-in
+// mesh-based backend, so the only thing we need from notifications is the live
+// camera — tracked here so a rebuild can restore whatever the user is looking at.
 function handleNotify(changed: ChangeNotification) {
-  // Track the live camera so a rebuild can restore whatever the user is looking at.
   if (changed.position)
     keptPosition = changed.position.new as number[]
   if (changed.quaternion)
@@ -70,19 +65,6 @@ function handleNotify(changed: ChangeNotification) {
     keptTarget = changed.target.new as number[]
   if (changed.zoom)
     keptZoom = changed.zoom.new as number
-
-  const changes: MeasureChanges = {}
-  let relevant = false
-  if (changed.activeTool) {
-    changes.activeTool = changed.activeTool.new as string | null
-    relevant = true
-  }
-  if (changed.selectedShapeIDs) {
-    changes.selectedShapeIDs = changed.selectedShapeIDs.new as (string | boolean)[]
-    relevant = true
-  }
-  if (relevant)
-    props.measure.send(changes)
 }
 
 // The height we pass to the viewer sizes only the canvas. tcv wraps that canvas
@@ -101,9 +83,22 @@ function chromeHeight() {
   return cad.offsetHeight + margins - view.offsetHeight
 }
 
+// Horizontal analogue of chromeHeight(): .tcv_cad_viewer carries a 4px margin on
+// every side (ui.css) and the cad body is sized to cadWidth + 2, so the viewer's
+// footprint is wider than the canvas by those margins plus that fudge. Subtract it
+// so the toolbar's right-anchored controls (filter/help) aren't clipped by the
+// container's overflow-hidden. Measure live; fall back to 4+4+2 before build.
+function chromeWidth() {
+  const cad = host.value?.querySelector('.tcv_cad_viewer') as HTMLElement | null
+  if (!cad)
+    return 10 // elements not built yet; first render corrects it
+  const cs = getComputedStyle(cad)
+  return parseFloat(cs.marginLeft) + parseFloat(cs.marginRight) + 2
+}
+
 function dims() {
   const el = host.value!
-  const width = GLASS ? el.clientWidth - 2 : Math.max(10, el.clientWidth - TREE_WIDTH)
+  const width = GLASS ? Math.max(10, el.clientWidth - chromeWidth()) : Math.max(10, el.clientWidth - TREE_WIDTH)
   const height = Math.max(10, el.clientHeight - chromeHeight())
   return { width, height }
 }
@@ -124,15 +119,19 @@ function createViewer() {
     pinning: false,
     newTreeBehavior: true,
     measureTools: true,
-    measurementDebug: false,
+    // v5 default (false) uses the built-in mesh-based measurement backend, so we
+    // no longer wire up an external Python measurement backend.
+    externalMeasurementBackend: false,
     selectTool: true,
     explodeTool: false,
     zscaleTool: false,
     zebraTool: false,
+    // Studio mode (PBR / env-maps / post-processing) is hidden and its heavy
+    // deps are stubbed out of the bundle (see vite.config.ts / stubs/).
+    studioTool: false,
   }
   display = new Display(host.value, options)
   viewer = new TCVViewer(display, options, handleNotify)
-  props.measure.onResponse(response => viewer?.handleBackendResponse(response))
   display.glassMode(GLASS)
   display.showTools(true)
   display.setTheme('light')
@@ -234,7 +233,6 @@ watch(
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
-  props.measure.onResponse(null)
   try {
     viewer?.dispose?.()
     display?.dispose?.()

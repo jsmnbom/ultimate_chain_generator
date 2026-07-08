@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { JsonSchema } from './lib/protocol'
-import { useClipboard, useDebounceFn, useUrlSearchParams } from '@vueuse/core'
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { useClipboard, useDebounceFn, useLocalStorage, useUrlSearchParams } from '@vueuse/core'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import BootProgress from './components/BootProgress.vue'
 import ParamForm from './components/ParamForm.vue'
 import PrintabilityPanel from './components/PrintabilityPanel.vue'
@@ -22,11 +22,43 @@ const {
   report,
   build,
   exportModel,
-  measure,
 } = useChainWorker()
 
 const params = ref<Record<string, number | string>>({})
 const exporting = ref<string | null>(null)
+
+// Split-button: the primary action remembers the last format the user picked.
+const exportFormat = useLocalStorage<'3MF' | 'STEP'>('ucg-export-format', '3MF')
+const exportItems = computed(() =>
+  [[
+    {
+      label: '3MF',
+      description: 'Works with most 3D programs and slicers. Recommended.',
+      icon: 'i-lucide-download',
+      onSelect: () => downloadExport('3MF'),
+    },
+    {
+      label: 'STEP',
+      description: 'CAD interchange format.',
+      icon: 'i-lucide-download',
+      onSelect: () => downloadExport('STEP'),
+    },
+  ]],
+)
+
+const repoUrl = 'https://github.com/jsmnbom/ultimate_chain_generator'
+
+// External project links, rendered as a row of icon buttons in the footer. Add
+// Printables etc. here as they come.
+const links = [
+  { label: 'GitHub', icon: 'i-lucide-github', to: repoUrl },
+]
+
+// Build version: full git hash from the build (shortened for display), linking
+// back to its commit on GitHub. 'dev' outside a git checkout.
+const gitHash = __GIT_HASH__
+const gitHashShort = gitHash === 'dev' ? 'dev' : gitHash.slice(0, 7)
+const commitUrl = gitHash === 'dev' ? repoUrl : `${repoUrl}/commit/${gitHash}`
 
 // Reactive bridge to the URL query (kept in the real search string, before the
 // router's hash, so links stay shareable and independent of the hash router).
@@ -101,6 +133,7 @@ function copyLink() {
 async function downloadExport(format: 'STEP' | '3MF') {
   if (exporting.value)
     return
+  exportFormat.value = format
   exporting.value = format
   try {
     const bytes = await exportModel(format, params.value)
@@ -146,6 +179,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
             size="xs"
             variant="ghost"
             color="neutral"
+            class="shrink-0"
             :icon="copied ? 'i-lucide-check' : 'i-lucide-link'"
             :label="copied ? 'Copied!' : 'Copy link'"
             @click="copyLink"
@@ -176,37 +210,56 @@ async function downloadExport(format: 'STEP' | '3MF') {
         </div>
 
         <footer class="border-t border-neutral-200 px-5 py-4">
-          <p class="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-            Export
-          </p>
-          <!-- 3MF is the preferred format (OrcaSlicer project); STEP is secondary. -->
-          <div class="flex items-center gap-2">
+          <!-- Split button: primary action remembers the last-used format; the
+               dropdown chevron switches between 3MF and STEP. -->
+          <UFieldGroup class="w-full">
             <UButton
-              class="grow" color="primary" variant="solid" icon="i-lucide-download"
-              :loading="exporting === '3MF'" :disabled="!!exporting" @click="downloadExport('3MF')"
+              class="grow justify-center" color="primary" variant="solid" icon="i-lucide-download"
+              :loading="!!exporting" :disabled="!!exporting" @click="downloadExport(exportFormat)"
             >
-              3MF <span class="ml-1 text-xs opacity-75">· recommended</span>
+              {{ exporting ? `Exporting ${exporting}…` : `Export ${exportFormat}` }}
             </UButton>
-            <UTooltip
-              text="Works with most 3D programs and slicers, and best with OrcaSlicer (it's an OrcaSlicer project)."
-              :delay-duration="0"
-            >
-              <UIcon name="i-lucide-circle-help" class="size-4 shrink-0 cursor-help text-neutral-400" />
-            </UTooltip>
+            <UDropdownMenu :items="exportItems" :disabled="!!exporting" :content="{ align: 'end' }">
+              <UButton color="primary" variant="solid" icon="i-lucide-chevron-down" :disabled="!!exporting" />
+            </UDropdownMenu>
+          </UFieldGroup>
+
+          <!-- Project links + build version -->
+          <div class="mt-4 flex items-center justify-between border-t border-neutral-200 pt-3">
+            <div class="flex items-center gap-1">
+              <UButton
+                v-for="link in links"
+                :key="link.label"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :icon="link.icon"
+                :label="link.label"
+                :to="link.to"
+                external
+                target="_blank"
+              />
+            </div>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-git-commit-horizontal"
+              :label="gitHashShort"
+              :to="commitUrl"
+              external
+              target="_blank"
+              title="View this build's commit on GitHub"
+              class="font-mono"
+            />
           </div>
-          <UButton
-            class="mt-2" block color="neutral" variant="outline" icon="i-lucide-download"
-            :loading="exporting === 'STEP'" :disabled="!!exporting" @click="downloadExport('STEP')"
-          >
-            STEP
-          </UButton>
         </footer>
       </UDashboardPanel>
 
       <!-- Right: viewer -->
       <UDashboardPanel id="viewer" class="bg-neutral-100">
         <Suspense>
-          <Viewer :shapes="shapes" :building="building" :measure="measure" />
+          <Viewer :shapes="shapes" :building="building" />
           <template #fallback>
             <div class="flex h-full items-center justify-center text-sm text-neutral-400">
               Loading viewer…

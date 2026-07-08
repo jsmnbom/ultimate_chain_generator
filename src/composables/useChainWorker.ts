@@ -2,7 +2,6 @@ import type { Shapes } from 'three-cad-viewer'
 import type {
   FieldError,
   JsonSchema,
-  MeasureChanges,
   Preset,
   PrintabilityReport,
   WorkerRequest,
@@ -11,16 +10,6 @@ import type {
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import { resolveSchema } from '../lib/resolveSchema'
 import { useMockChainWorker } from './useMockChainWorker'
-
-/**
- * Bridge for the viewer's measure tools: forward the viewer's selection/tool
- *  changes to the Python backend, and route its BREP-measurement responses back
- *  to a single handler (the Viewer, which feeds them to handleBackendResponse).
- */
-export interface MeasureBridge {
-  send: (changes: MeasureChanges) => void
-  onResponse: (handler: ((response: Record<string, unknown>) => void) | null) => void
-}
 
 export type BootStatus = 'booting' | 'ready' | 'error'
 
@@ -69,7 +58,6 @@ export function useChainWorker() {
       report,
       build: () => {},
       exportModel: () => Promise.reject(new Error('SharedWorker unsupported')),
-      measure: { send() {}, onResponse() {} } as MeasureBridge,
     }
   }
 
@@ -107,7 +95,6 @@ export function useChainWorker() {
     number,
     { resolve: (b: Uint8Array) => void, reject: (e: Error) => void, format: string }
   >()
-  let measureResponseHandler: ((response: Record<string, unknown>) => void) | null = null
 
   function send(msg: WorkerRequest, transfer?: Transferable[]) {
     port.postMessage(msg, transfer ?? [])
@@ -161,9 +148,6 @@ export function useChainWorker() {
         }
         break
       }
-      case 'measure-response':
-        measureResponseHandler?.(msg.response)
-        break
       case 'log':
         // Surface Python stdout/stderr for debugging. Use console.log (not
         // console.debug) for stdout — Chrome hides the Verbose level by default,
@@ -185,17 +169,6 @@ export function useChainWorker() {
         location.reload()
         break
     }
-  }
-
-  const measure: MeasureBridge = {
-    send(changes) {
-      if (status.value !== 'ready')
-        return
-      send({ type: 'measure', changes })
-    },
-    onResponse(handler) {
-      measureResponseHandler = handler
-    },
   }
 
   /** Debounced, latest-wins build request. */
@@ -252,6 +225,5 @@ export function useChainWorker() {
     report,
     build,
     exportModel,
-    measure,
   }
 }

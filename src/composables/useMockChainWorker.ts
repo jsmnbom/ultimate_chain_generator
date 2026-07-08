@@ -1,6 +1,6 @@
 import type { Shapes } from 'three-cad-viewer'
 import type { FieldError, JsonSchema, Preset, PrintabilityReport } from '../lib/protocol'
-import type { BootStatus, MeasureBridge } from './useChainWorker'
+import type { BootStatus } from './useChainWorker'
 import { ref, shallowRef } from 'vue'
 import presetsFixture from '../fixtures/presets.json'
 import schemaFixture from '../fixtures/schema.json'
@@ -112,9 +112,6 @@ export function useMockChainWorker() {
     })
   }
 
-  // No CAD kernel in mock mode, so no geometry to measure: accept and drop.
-  const measure: MeasureBridge = { send() { }, onResponse() { } }
-
   return {
     status,
     bootStage,
@@ -128,6 +125,5 @@ export function useMockChainWorker() {
     report,
     build,
     exportModel,
-    measure,
   }
 }

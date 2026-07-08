@@ -49,6 +49,7 @@ jobs:
         run: pnpm build
         env:
           BASE_URL: ${{ steps.pages.outputs.base_path }}/
+          GIT_HASH: ${{ github.sha }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

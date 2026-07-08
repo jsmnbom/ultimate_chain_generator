@@ -41,19 +41,10 @@ export interface BuildResult {
   report?: PrintabilityReport
 }
 
-// The subset of three-cad-viewer change notifications the measure backend cares
-// about: the active tool and the picked-shape selection (its last element is the
-// center/min shift flag). Forwarded to the worker to compute BREP measurements.
-export interface MeasureChanges {
-  activeTool?: string | null
-  selectedShapeIDs?: (string | boolean)[]
-}
-
 // --- Main thread -> worker ------------------------------------------------- //
 export type WorkerRequest
   = | { type: 'build', id: number, params: Record<string, unknown> }
     | { type: 'export', id: number, format: string, params: Record<string, unknown> }
-    | { type: 'measure', changes: MeasureChanges }
   // A tab going away (dispose / pagehide): the SharedWorker drops this port's
   // per-port scheduler state. The browser tears the worker down once the last
   // port closes, so this is cleanup, not shutdown.
@@ -68,8 +59,6 @@ export type WorkerResponse
     | { type: 'shapes', data: string }
     | ({ type: 'build-result', id: number } & BuildResult)
     | { type: 'export-result', id: number, format: string, bytes?: Uint8Array, error?: string }
-  // A backend_response for the viewer's handleBackendResponse (measure tools).
-    | { type: 'measure-response', response: Record<string, unknown> }
   // Dev-only: the model module (chain.py) was hot-reloaded in place — the Pyodide
   // stack stayed up. Carries the fresh schema/presets so the form re-renders
   // without a reboot. Tree-shaken from production (emitted only under import.meta.hot).

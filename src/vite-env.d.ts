@@ -8,6 +8,9 @@ interface ImportMetaEnv {
   readonly VITE_MOCK_WORKER?: string
 }
 
+/** Git hash of the build, injected at build time (see vite.config.ts). */
+declare const __GIT_HASH__: string
+
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
 

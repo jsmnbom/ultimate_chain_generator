@@ -4,8 +4,6 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 
 import App from './App.vue'
 import './assets/css/main.css'
-// @ts-expect-error: todo: fix this import to be a valid module
-import 'three-cad-viewer/css'
 import 'virtual:nuxt-icon-bundle/register'
 
 // The app chrome is intentionally light-only (white control panel, light-grey

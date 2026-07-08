@@ -20,7 +20,6 @@ import type {
 } from '../lib/protocol'
 import chainSrc from '../python/chain.py?raw'
 import installSrc from '../python/install.py?raw'
-import measureSrc from '../python/measure.py?raw'
 import protoSrc from '../python/proto.py?raw'
 import runtimeSrc from '../python/runtime.py?raw'
 
@@ -32,9 +31,6 @@ let busy = false
 // Per-tab build coalescing: each port keeps only its latest pending build.
 const pendingBuilds = new Map<MessagePort, { id: number, params: unknown }>()
 const exportQueue: { port: MessagePort, id: number, format: string, params: unknown }[] = []
-// Measure requests are small and interactive (they fire while the user hovers /
-// clicks in the viewer), so they jump the queue ahead of builds and exports.
-const measureQueue: { port: MessagePort, changes: unknown }[] = []
 // The port whose build is running right now, so host_bridge's shapes message
 // (emitted during the build) reaches the correct tab. Set around doBuild only.
 let currentBuildPort: MessagePort | null = null
@@ -108,7 +104,12 @@ async function initialize(): Promise<void> {
   boot('Installing CAD kernel (OCP.wasm)…', 0.25)
   await pyodide.runPythonAsync(installSrc)
 
-  boot('Loading build123d…', 0.75)
+  // import build123d runs actual import logic for the build123d + OCP and is the
+  // slowest part of the boot process
+  boot('Loading build123d…', 0.5)
+  await pyodide.runPythonAsync('import build123d')
+
+  boot('Loading model…', 0.9)
   // chain.py pulls its shared form/preview helpers in with `from proto import …`.
   // Unlike the other assets (exec'd straight into the global namespace), proto
   // must therefore exist as a real importable module. Write it to Pyodide's home
@@ -117,10 +118,7 @@ async function initialize(): Promise<void> {
   pyodide.FS.writeFile('/home/pyodide/proto.py', new TextEncoder().encode(protoSrc))
   await pyodide.runPythonAsync(chainSrc)
 
-  boot('Preparing viewer bridge…', 0.9)
-  // measure.py before runtime.py: it provides get_distance / get_properties as
-  // globals that runtime.py's measure backend calls (same pattern as chain.py).
-  await pyodide.runPythonAsync(measureSrc)
+  boot('Preparing viewer bridge…', 0.95)
   await pyodide.runPythonAsync(runtimeSrc)
 
   boot('Ready', 1.0)
@@ -139,13 +137,6 @@ async function doBuild(params: unknown): Promise<BuildResult> {
   pyodide.globals.set('_params_json', JSON.stringify(params))
   const resultStr: string = await pyodide.runPythonAsync('build_and_show(_params_json)')
   return JSON.parse(resultStr) as BuildResult
-}
-
-async function doMeasure(changes: unknown): Promise<Record<string, unknown> | null> {
-  pyodide.globals.set('_measure_json', JSON.stringify(changes))
-  const resultStr: string = await pyodide.runPythonAsync('handle_measure(_measure_json)')
-  // Empty string means "nothing to answer yet" (wrong tool / too few shapes).
-  return resultStr ? (JSON.parse(resultStr) as Record<string, unknown>) : null
 }
 
 // Dev-only: re-exec the model source (chain.py) into the running interpreter and
@@ -194,21 +185,6 @@ function schedule() {
         broadcast({ type: 'model-reloaded', schema: s, presets: p })
       })
       .catch(err => broadcast({ type: 'log', stream: 'stderr', text: `model reload failed: ${err?.message ?? err}` }))
-      .finally(() => {
-        busy = false
-        schedule()
-      })
-    return
-  }
-  const meas = measureQueue.shift()
-  if (meas) {
-    busy = true
-    doMeasure(meas.changes)
-      .then((response) => {
-        if (response)
-          post(meas.port, { type: 'measure-response', response })
-      })
-      .catch(err => post(meas.port, { type: 'log', stream: 'stderr', text: `measure failed: ${err?.message ?? err}` }))
       .finally(() => {
         busy = false
         schedule()
@@ -266,10 +242,6 @@ function cleanupPort(port: MessagePort) {
     if (exportQueue[i].port === port)
       exportQueue.splice(i, 1)
   }
-  for (let i = measureQueue.length - 1; i >= 0; i--) {
-    if (measureQueue[i].port === port)
-      measureQueue.splice(i, 1)
-  }
 }
 
 // A new tab connected. Register it, catch it up on boot state (so a late joiner
@@ -299,10 +271,6 @@ function connect(port: MessagePort) {
         break
       case 'export':
         exportQueue.push({ port, id: msg.id, format: msg.format, params: msg.params })
-        schedule()
-        break
-      case 'measure':
-        measureQueue.push({ port, changes: msg.changes })
         schedule()
         break
       case 'disconnect':
@@ -356,7 +324,7 @@ if (import.meta.hot) {
       schedule()
     }
   })
-  // Any other change (worker code, proto/runtime/measure/install.py) still needs
+  // Any other change (worker code, proto/runtime/install.py) still needs
   // a fresh interpreter — full reload.
   import.meta.hot.accept(() => {
     broadcast({ type: 'reload' });

@@ -11,8 +11,10 @@ boot (every transitive dep is either mocked below, a Pyodide built-in loaded via
 ``REQUIREMENTS`` is the human-editable source of truth for versions; ``_WHEEL_URLS`` is
 generated from it. The pinned ``*-OCP.wasm`` wheels are custom OpenCascade builds
 published to PyPI (see github.com/Yeicor/OCP.wasm); their exact post-release stamps are
-matched to build123d 0.11.1 / ocp-tessellate 3.1.2 / three-cad-viewer 4.1.2. Bump all
-four together, then regenerate ``_WHEEL_URLS``:
+matched to build123d 0.11.1 / ocp-tessellate 3.1.2. The JS-side viewer,
+three-cad-viewer 5, is vendored as a git submodule (see vendor/three-cad-viewer) and
+consumes ocp-tessellate's nested-array shapes format unchanged. Bump the Python set
+together, then regenerate ``_WHEEL_URLS``:
 
     node scripts/gen-pyodide-wheels.mjs
 """
