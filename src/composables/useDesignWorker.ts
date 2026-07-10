@@ -1,4 +1,5 @@
 import type { Shapes } from 'three-cad-viewer'
+import type { InjectionKey } from 'vue'
 import type {
   FieldError,
   JsonSchema,
@@ -7,25 +8,37 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from '../lib/protocol'
-import { onScopeDispose, ref, shallowRef } from 'vue'
+import { inject, onScopeDispose, ref, shallowRef } from 'vue'
 import { resolveSchema } from '../lib/resolveSchema'
-import { useMockChainWorker } from './useMockChainWorker'
+import { useMockDesignWorker } from './useMockDesignWorker'
 
 export type BootStatus = 'booting' | 'ready' | 'error'
 
-/** The reactive worker bundle App.vue hands down to the async AppContent. */
-export type ChainWorker = ReturnType<typeof useChainWorker>
+/** The reactive worker bundle App.vue provides to the views. */
+export type DesignWorker = ReturnType<typeof useDesignWorker>
+
+/** provide/inject key so App.vue can share the one worker with every route. */
+export const designWorkerKey: InjectionKey<DesignWorker> = Symbol('designWorker')
+
+/** Inject the shared worker inside a route component (App.vue provides it). */
+export function injectDesignWorker(): DesignWorker {
+  const worker = inject(designWorkerKey)
+  if (!worker)
+    throw new Error('designWorker not provided — App.vue must provide() it above <RouterView>.')
+  return worker
+}
 
 const BUILD_DEBOUNCE_MS = 120
+const RELOAD_DEBOUNCE_MS = 250
 
-export function useChainWorker() {
+export function useDesignWorker() {
   // UI-prototyping mode: skip the Pyodide/OCP boot entirely and serve a static
   // schema with an empty viewer. Enabled via VITE_MOCK_WORKER (`pnpm dev:mock`).
   // Returning here means the real Worker below is never constructed, so nothing
   // is fetched from the CDN. In a normal build the flag is statically `undefined`,
   // so this branch (and the mock) are dead-code-eliminated.
   if (import.meta.env.VITE_MOCK_WORKER) {
-    return useMockChainWorker()
+    return useMockDesignWorker()
   }
 
   const status = ref<BootStatus>('booting')
@@ -39,6 +52,12 @@ export function useChainWorker() {
   const building = ref(false)
   const fieldErrors = ref<FieldError[]>([])
   const report = ref<PrintabilityReport | null>(null)
+  // The active design's source is exec'd in the worker; a compile/exec traceback
+  // (from a bad Code-tab edit) lands here for the editor to surface inline.
+  const reloadError = ref<string | null>(null)
+  // True while a design swap is in flight (gallery open / Code edit) — the form
+  // shows a loading state until the fresh schema arrives.
+  const reloading = ref(false)
 
   // One SharedWorker backs every tab of the origin, so a second tab connects to
   // the already-booted Python instead of re-paying the tens-of-seconds boot. We
@@ -59,8 +78,11 @@ export function useChainWorker() {
       building,
       fieldErrors,
       report,
+      reloadError,
+      reloading,
       build: () => {},
       exportModel: () => Promise.reject(new Error('SharedWorker unsupported')),
+      reloadDesign: () => {},
     }
   }
 
@@ -73,7 +95,7 @@ export function useChainWorker() {
   // these page-thread logs are what actually shows up in a screenshot.
   const bootStart = performance.now()
   // eslint-disable-next-line no-console
-  const log = (...args: unknown[]) => console.info('[chain]', ...args)
+  const log = (...args: unknown[]) => console.info('[lab]', ...args)
 
   let port: MessagePort
   try {
@@ -91,9 +113,9 @@ export function useChainWorker() {
 
   let nextId = 1
   let latestBuildId = 0
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
-  // Last params we built, so a dev model hot-reload can re-render immediately.
-  let lastParams: Record<string, unknown> | null = null
+  let latestReloadId = 0
+  let buildTimer: ReturnType<typeof setTimeout> | null = null
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null
   const pendingExports = new Map<
     number,
     { resolve: (b: Uint8Array) => void, reject: (e: Error) => void, format: string }
@@ -117,11 +139,9 @@ export function useChainWorker() {
         bootError.value = msg.message
         break
       case 'ready':
-        log(`ready in ${((performance.now() - bootStart) / 1000).toFixed(1)}s`)
-        // Dereference pydantic's `$ref`/`$defs` (the enum choice fields) into the
-        // flat schema the form renderer reads. See resolveSchema.
-        schema.value = resolveSchema(msg.schema)
-        presets.value = msg.presets ?? []
+        // The engine is warm; no design is loaded yet (the active view selects one
+        // by slug via reloadDesign, whose reply carries the schema).
+        log(`engine ready in ${((performance.now() - bootStart) / 1000).toFixed(1)}s`)
         status.value = 'ready'
         break
       case 'shapes':
@@ -158,14 +178,27 @@ export function useChainWorker() {
         // eslint-disable-next-line no-console
         (msg.stream === 'stderr' ? console.warn : console.log)('[py]', msg.text)
         break
-      case 'model-reloaded':
-        // Dev-only: chain.py was re-exec'd in place (no Pyodide reboot). Swap in
-        // the fresh schema/presets and rebuild with the current params.
-        schema.value = resolveSchema(msg.schema)
-        presets.value = msg.presets ?? []
-        if (lastParams)
-          build(lastParams)
+      case 'design-reloaded': {
+        // Reply to a reloadDesign request (gallery open or Code-tab edit) or a dev
+        // HMR reload (no id). A stale reply (superseded by a newer reload) is
+        // ignored so an out-of-order success/failure can't clobber current state.
+        if (msg.id !== undefined && msg.id !== latestReloadId)
+          break
+        reloading.value = false
+        if (msg.ok) {
+          // Dereference pydantic's `$ref`/`$defs` into the flat schema the form
+          // renderer reads (see resolveSchema). Updating `schema` drives the
+          // active view to (re)seed params, preserving existing values.
+          reloadError.value = null
+          schema.value = msg.schema ? resolveSchema(msg.schema) : null
+          presets.value = msg.presets ?? []
+        }
+        else {
+          // Keep the last-good schema on screen; surface the traceback inline.
+          reloadError.value = msg.error ?? 'Design failed to load.'
+        }
         break
+      }
       case 'reload':
         // Dev-only: the SharedWorker is closing itself because its code changed
         // (HMR). Reload onto fresh code; the reload spawns a new worker.
@@ -178,16 +211,31 @@ export function useChainWorker() {
   function build(params: Record<string, unknown>) {
     if (status.value !== 'ready')
       return
-    if (debounceTimer)
-      clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
+    if (buildTimer)
+      clearTimeout(buildTimer)
+    buildTimer = setTimeout(() => {
       latestBuildId = nextId++
       building.value = true
       // Snapshot to a plain object: a Vue reactive proxy isn't structured-cloneable.
-      const snapshot = { ...params }
-      lastParams = snapshot
-      send({ type: 'build', id: latestBuildId, params: snapshot })
+      send({ type: 'build', id: latestBuildId, params: { ...params } })
     }, BUILD_DEBOUNCE_MS)
+  }
+
+  /**
+   * Debounced, latest-wins design swap. `source` is a `design.py` (a bundled
+   * design's source on gallery-open, or the Code editor's contents). Its reply
+   * updates `schema`/`presets` on success or `reloadError` on failure.
+   */
+  function reloadDesign(source: string, slug: string) {
+    if (status.value !== 'ready')
+      return
+    reloading.value = true
+    if (reloadTimer)
+      clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(() => {
+      latestReloadId = nextId++
+      send({ type: 'reload-design', id: latestReloadId, source, slug })
+    }, RELOAD_DEBOUNCE_MS)
   }
 
   function exportModel(format: string, params: Record<string, unknown>): Promise<Uint8Array> {
@@ -209,8 +257,10 @@ export function useChainWorker() {
   window.addEventListener('pagehide', disconnect)
 
   onScopeDispose(() => {
-    if (debounceTimer)
-      clearTimeout(debounceTimer)
+    if (buildTimer)
+      clearTimeout(buildTimer)
+    if (reloadTimer)
+      clearTimeout(reloadTimer)
     window.removeEventListener('pagehide', disconnect)
     disconnect()
   })
@@ -226,7 +276,10 @@ export function useChainWorker() {
     building,
     fieldErrors,
     report,
+    reloadError,
+    reloading,
     build,
     exportModel,
+    reloadDesign,
   }
 }

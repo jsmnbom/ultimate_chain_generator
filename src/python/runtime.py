@@ -1,8 +1,8 @@
 """Worker orchestration: tessellate build123d geometry with ocp-tessellate and
 post it to the JS viewer, plus schema / build / export helpers for the worker.
 
-Exec'd once at boot, after ``chain.py`` (which defines ``Parameters`` and
-``build`` in globals) and after ``install.py``.
+Exec'd once at boot, after ``install.py``. It boots *without* a design (the
+active design is bound later by ``reload_design``).
 
 ``show`` reproduces what ocp-tessellate's ``export_three_cad_viewer_js`` does,
 minus the file / ``var name = …`` wrapper: convert to an OcpGroup, tessellate,
@@ -15,19 +15,21 @@ there is no decode step on the JS side.
 import builtins
 import io
 import json
+import traceback
 
 import build123d as b3d
 from ocp_tessellate.convert import tessellate_group, to_ocpgroup
 from ocp_tessellate.utils import numpy_to_json
 from pydantic import ValidationError
 
-from proto import Design, Report, load_model
+from proto import Design, Report, load_design
 
-# The one Design subclass the loaded model module defines (chain.py's Chain at
-# boot; a Code-tab module after reload_model). All schema/build/export/analyze
-# flows go through this handle — the seam, bound in one place instead of reaching
-# for loose globals. ``chain.py`` was exec'd into these globals before runtime.py.
-Model = load_model(globals())
+# The one Design subclass the active design module defines. All schema / build /
+# export / analyze flows go through this handle — the seam, bound in one place
+# instead of reaching for loose globals. The engine boots *without* a design
+# (``None``); the main thread selects one by slug and calls ``reload_design``,
+# which binds it. Worker helpers guard against ``ActiveDesign is None`` until then.
+ActiveDesign: type[Design] | None = None
 
 # --------------------------------------------------------------------------- #
 # Helpers called by the worker (params cross the boundary as JSON strings)
@@ -36,39 +38,60 @@ Model = load_model(globals())
 
 def get_schema_json() -> str:
   """The JSON Schema that drives the form."""
-  return json.dumps(Model.Parameters.model_json_schema())
+  if ActiveDesign is None:
+    return json.dumps({})
+  return json.dumps(ActiveDesign.Parameters.model_json_schema())
 
 
 def get_presets_json() -> str:
   """Curated starting-point presets for the form's preset picker, or ``[]`` when
-  the loaded model defines none (see ``Design.PRESETS``)."""
-  return json.dumps(Model.PRESETS)
+  the loaded design defines none (see ``Design.PRESETS``)."""
+  if ActiveDesign is None:
+    return json.dumps([])
+  return json.dumps(ActiveDesign.PRESETS)
 
 
-def reload_model(source: str) -> str:
-  """Swap in a new model module without rebooting Pyodide: exec ``source`` in a
-  fresh namespace, rebind ``Model`` to its ``Design`` subclass, and return the
-  fresh ``{"schema", "presets"}`` for the form. Used by dev hot-reload of
-  ``chain.py`` and, in the same shape, by the future Code tab (editor contents in
-  place of the file). On failure the exception propagates and ``Model`` is left
-  untouched (rebind happens only after a successful load)."""
-  global Model
+def reload_design(source: str) -> str:
+  """Swap in a new design module without rebooting Pyodide: exec ``source`` in a
+  fresh namespace, rebind ``ActiveDesign`` to its ``Design`` subclass, and return
+  the fresh ``{"ok", "schema", "presets"}`` for the form. Drives design selection
+  from the gallery (a bundled design's source), dev hot-reload of a ``design.py``,
+  and the Code tab (editor contents in place of the file).
+
+  On failure the previous ``ActiveDesign`` is left untouched (rebind happens only
+  after a successful load) and ``{"ok": false, "error": <traceback>}`` is returned
+  so the Code tab can render the compile/exec error inline."""
+  global ActiveDesign
   # Exec into this module's own globals (``__main__`` in the worker) so pydantic
-  # can resolve the model's forward refs via a registered module namespace — a
+  # can resolve the design's forward refs via a registered module namespace — a
   # bare dict would leave ``Parameters`` "not fully defined". First drop any
-  # previously-loaded Design subclass so a *renamed* model (Code tab) doesn't
-  # collide with its predecessor under load_model's one-model rule.
+  # previously-loaded Design subclass so a *renamed* design (Code tab) doesn't
+  # collide with its predecessor under load_design's one-design rule. Exec into a
+  # copy so a failed load doesn't leave half-defined names polluting globals.
   g = globals()
+  scratch = dict(g)
   for name in [
     n
-    for n, v in list(g.items())
+    for n, v in list(scratch.items())
     if isinstance(v, type) and v is not Design and issubclass(v, Design)
   ]:
+    del scratch[name]
+  try:
+    exec(compile(source, "<design>", "exec"), scratch)
+    design = load_design(scratch)
+  except Exception:
+    return json.dumps({"ok": False, "error": traceback.format_exc()})
+  # Commit the successfully-loaded names into the real globals and rebind.
+  for name in [n for n in g if n not in scratch]:
     del g[name]
-  exec(compile(source, "<model>", "exec"), g)
-  Model = load_model(g)
+  g.update(scratch)
+  ActiveDesign = design
   return json.dumps(
-    {"schema": Model.Parameters.model_json_schema(), "presets": Model.PRESETS}
+    {
+      "ok": True,
+      "schema": ActiveDesign.Parameters.model_json_schema(),
+      "presets": ActiveDesign.PRESETS,
+    }
   )
 
 
@@ -97,7 +120,7 @@ def _flatten_edges(shape) -> None:
 def _inline_instances(instances, shapes) -> None:
   """Splice tessellated instance geometry into the shapes tree in place.
 
-  ocp-tessellate dedupes repeated shapes (every link of the chain shares one
+  ocp-tessellate dedupes repeated shapes (e.g. every link of a chain shares one
   mesh) behind an instance list, leaving ``{"ref": i}`` placeholders in the
   tree. three-cad-viewer has no ref indirection, so each leaf must carry its own
   geometry. Mirrors ocp-tessellate's own private decode. Each resolved shape is
@@ -129,14 +152,17 @@ def build_and_show(params_json: str) -> str:
   bridge (as a side effect of show), the printability report is computed, and
   ``{"ok": true, "report": {...}}`` is returned. On failure a structured error
   list is returned for inline display on the form."""
+  if ActiveDesign is None:
+    return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "No design loaded", "type": "no_design"}]})
+
   data = json.loads(params_json)
   try:
-    params = Model.Parameters(**data)
+    params = ActiveDesign.Parameters(**data)
   except ValidationError as exc:
     return json.dumps({"ok": False, "errors": _validation_errors(exc)})
 
   try:
-    obj = Model(params)  # type: ignore[reportGeneralTypeIssues]
+    obj = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
   except Exception as exc:  # geometry error -> surface as a form-level message
     return json.dumps(
       {"ok": False, "errors": [{"loc": [], "msg": str(exc), "type": "build_error"}]}
@@ -156,9 +182,12 @@ def export_bytes(params_json: str, fmt: str):
   """Rebuild from ``params_json`` and return the exported file as ``bytes``.
   Rebuilding (rather than reusing the last shown object) keeps exports in sync
   with the current form even if the last render was for different params."""
+  if ActiveDesign is None:
+    raise RuntimeError("No design loaded")
+
   data = json.loads(params_json)
-  params = Model.Parameters(**data)
-  obj = Model(params) # type: ignore[reportGeneralTypeIssues]
+  params = ActiveDesign.Parameters(**data)
+  obj = ActiveDesign(params) # type: ignore[reportGeneralTypeIssues]
 
   fmt = fmt.upper()
   if fmt == "STEP":
@@ -172,8 +201,8 @@ def export_bytes(params_json: str, fmt: str):
     from orca123d import Project
 
     proj = Project()
-    proj.add_object(obj)  # names itself from the compound's "chain" label
-    path = "/tmp/chain.3mf"
+    proj.add_object(obj)  # names itself from the compound's label (design-defined)
+    path = "/tmp/export.3mf"
     proj.save(path)
     with open(path, "rb") as f:
       return f.read()

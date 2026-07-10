@@ -50,7 +50,7 @@ micropip.add_mock_package(
   ),
 )
 # ``ezdxf.colors`` is the one submodule we do exercise: build123d's ExportSVG
-# (used for the shape-preview SVGs, see chain.py) colour path does
+# (used for the shape-preview SVGs, see design.py) colour path does
 # ``match color: ... case RGB() as rgb:``, and a class pattern requires ``RGB`` to
 # be a real class — a MagicMock raises "called match pattern must be a class". So
 # give this submodule the real ``RGB``/``aci2rgb`` (a tiny, dependency-free part of

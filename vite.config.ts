@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite'
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve as resolvePath } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -55,6 +55,25 @@ function tcvSource(): Plugin {
         return `export default ${JSON.stringify(readFileSync(abs, 'utf-8'))}`
       }
       return null
+    },
+  }
+}
+
+// GitHub Pages has no server-side rewrite, so a deep-link refresh (e.g.
+// /reponame/m/chain) would 404. The convention is to serve a copy of index.html
+// as 404.html: Pages returns it for any unmatched path, the SPA boots, and
+// vue-router resolves the real route client-side. Vite injects base-prefixed
+// absolute asset URLs into index.html, so the copy loads assets correctly under
+// the project's base. Runs after the bundle is written.
+function spaFallback(): Plugin {
+  return {
+    name: 'spa-404-fallback',
+    apply: 'build',
+    closeBundle() {
+      const dist = fileURLToPath(new URL('./dist', import.meta.url))
+      const index = resolvePath(dist, 'index.html')
+      if (existsSync(index))
+        copyFileSync(index, resolvePath(dist, '404.html'))
     },
   }
 }
@@ -118,6 +137,7 @@ export default defineConfig({
 
   plugins: [
     tcvSource(),
+    spaFallback(),
     vueDevTools(),
     vue(),
     ui(),

@@ -2,10 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Browser webapp that generates 3D-printable chains parametrically. Everything runs
-client-side: Python (build123d) executes in a web worker via Pyodide + OCP.wasm,
-geometry is tessellated with ocp-tessellate and rendered with three-cad-viewer.
-No server. See `README.md` for the stack table.
+**build123d-lab** — a browser playground for parametric 3D-printable **designs**.
+Everything runs client-side: Python (build123d) executes in a web worker via
+Pyodide + OCP.wasm, geometry is tessellated with ocp-tessellate and rendered with
+three-cad-viewer. No server. See `README.md` for the stack table.
+
+**Engine vs. content.** `build123d-lab` is the reusable engine (the Vue app shell,
+`ParamForm`/`Viewer`, worker, protocol, `proto.py` SDK, `runtime.py`, and the
+build/deploy/wheel tooling). **Paws & Parts** is this repo's content: the
+`src/designs/` gallery + `src/branding.ts`. The engine depends only on two seams —
+the **design manifest** (`src/designs/manifest.ts`) and the **branding config**
+(`src/branding.ts`) — never on a specific design's internals, so it stays cheap to
+extract later. A single design ("chain") is just one bundled entry.
 
 ## Commands
 
@@ -27,20 +35,24 @@ The user runs `ruff format` and tests themselves — don't run them. To verify a
 change, instruct the user how to exercise it (dev server, or the native
 round-trip below), rather than running a test suite (there is none).
 
-Exercise the Python contract natively — same source the worker runs:
+Exercise the Python contract natively — same source the worker runs (`design.py`
+is imported by name, with `proto.py` on `sys.path`, so pydantic can resolve the
+design's forward refs):
 
 ```sh
 uv run python -c "import sys; sys.path.insert(0,'src/python'); \
-  import proto, chain; M = proto.load_model(vars(chain)); print(M(M.Parameters()))"
+  sys.path.insert(0,'src/designs/chain'); import proto, design; \
+  D = proto.load_design(vars(design)); print(D(D.Parameters()))"
 ```
 
 ## The single-source-of-truth contract
 
-The seam is defined in `src/python/proto.py` (the model-authoring **SDK**) and
-implemented by `src/python/chain.py` (the reference model). `proto.py` is the one
-place that states the whole contract — read its module docstring first.
+The seam is defined in `src/python/proto.py` (the design-authoring **SDK**) and
+implemented by each `src/designs/<slug>/design.py` (chain is the reference one).
+`proto.py` is the one place that states the whole contract — read its module
+docstring first.
 
-A model module exposes exactly one **`Design` subclass**:
+A design module exposes exactly one **`Design` subclass**:
 
 - `class Chain(Design[Parameters])` — the generic arg binds the pydantic
   `Parameters` type (auto-extracted in `Design.__init_subclass__`), so the form
@@ -50,11 +62,18 @@ A model module exposes exactly one **`Design` subclass**:
   build123d `Compound`, like `BasePartObject`) — construction **is** the build.
 - `Chain.analyze(self) -> Report` (optional) returns the printability report,
   reading `self` directly. `Chain.PRESETS` (optional) are curated starting points.
+- Optional module-level `NAME` / `AUTHOR` / `DESCRIPTION` string constants, a
+  `BLANK = True` flag, and a `LINKS` list (`{"label", "url"}` dicts → per-design
+  footer links, icons auto-derived from the URL host) are scraped by `manifest.ts`
+  for the gallery card / generator footer (co-located so they can't drift; no
+  Python boot needed to read them).
 
-`runtime.py` binds to this via `proto.load_model(globals())` — it never reaches
-for loose `build`/`analyze` globals. A user's own `Design` subclass (the future
-Code tab) swaps in with no pipeline changes. Keep the contract clean; don't leak
-chain-specifics into `proto.py`/the worker/runtime/frontend.
+`runtime.py` binds to this via `proto.load_design(namespace)`, holding the active
+subclass as `ActiveDesign` — it never reaches for loose `build`/`analyze` globals.
+The engine boots **without** a design; the frontend selects one by slug (or the
+Code tab hands over editor contents) and `reload_design(source)` execs it and
+rebinds `ActiveDesign`. Keep the contract clean; don't leak chain-specifics into
+`proto.py`/the worker/runtime/frontend.
 
 - Cross-field rules (`link_width >= link_thickness`, etc.) live in a pydantic
   `@model_validator(mode="after")`, **not** duplicated in JS. The form learns
@@ -64,7 +83,7 @@ chain-specifics into `proto.py`/the worker/runtime/frontend.
   `slider_field` / `choice_field` / `select_field`, each of which stamps a
   `widget` discriminator (`"slider"`/`"shape"`/`"select"`) the form switches on.
   Add a new parameter type by adding a helper there + a branch in `ParamForm.vue`.
-  "How to show the form" stays co-located with the model. The schema→component
+  "How to show the form" stays co-located with the design. The schema→component
   mapping is in `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens
   pydantic's `$ref`/`$defs` first.
 - The printability report is a flat list of findings built with `proto.Report`
@@ -72,10 +91,10 @@ chain-specifics into `proto.py`/the worker/runtime/frontend.
   numeric). Its `to_dict()` is mirrored by `PrintabilityReport` in `protocol.ts` and
   rendered generically by `PrintabilityPanel.vue`. Generic finding-builders live in
   `proto.py` (`check_bed_contact` / `check_interlock` / `check_floating` — they take a
-  `Report` and add a finding, owning default thresholds/wording any model can reuse);
-  model-specific choices (which face is the footprint, brim messaging, the chain's link
-  lean) stay in the model's `analyze`. `Design.analyze`'s default is an empty report —
-  a model opts into checks by calling the helpers.
+  `Report` and add a finding, owning default thresholds/wording any design can reuse);
+  design-specific choices (which face is the footprint, brim messaging, the chain's link
+  lean) stay in the design's `analyze`. `Design.analyze`'s default is an empty report —
+  a design opts into checks by calling the helpers.
 - `proto.py`'s `Choice` is a lightweight enum-like whose members are static
   methods (docstring → label/description) and whose SVG previews are generated
   from the *real* build123d outline, so previews can't drift from the geometry.
@@ -86,35 +105,49 @@ Data flows main thread ↔ worker over a typed message protocol in
 `src/lib/protocol.ts` (`WorkerRequest`/`WorkerResponse`). Read it first when
 touching cross-boundary code.
 
+- **Routing / views.** `src/main.ts` uses `createWebHistory` (real paths, no hash;
+  `BASE_URL` carries the Pages subpath). `/` → `src/views/Gallery.vue` (design cards
+  from `manifest.ts`); `/m/:slug` → `src/views/Generator.vue` (the form+viewer for
+  one design). `App.vue` constructs the **one** worker at the app root and
+  `provide()`s it (`designWorkerKey`) so its OCP boot warms while the gallery is
+  browsed; both views inject it. `dist/404.html` (a copy of `index.html`, emitted by
+  the `spaFallback` Vite plugin) is the GitHub Pages SPA deep-link fallback.
 - `src/worker/pyodide.worker.ts` — boots Pyodide once, then serves requests. It
   `exec`s the Python assets in order: `install.py` → writes `proto.py` to the FS
-  (it must be *importable*, the rest are exec'd into globals) → `chain.py` →
-  `measure.py` → `runtime.py`. A `host_bridge` JsModule lets Python post the
-  tessellated Shapes tree straight to the main thread. Scheduler runs one Python
-  call at a time: builds **coalesce to latest-wins**, exports are FIFO, measures
-  jump the queue.
-- `src/python/runtime.py` — binds the seam once (`Model = load_model(globals())`)
-  and exposes worker-facing helpers: `get_schema_json`, `build_and_show` (validate
-  → `Model(params)` build → tessellate → `obj.analyze()`), `export_bytes` (STEP via
-  build123d; 3MF OrcaSlicer project via orca123d), `reload_model` (re-exec a new
-  model in place — dev hot-reload / Code-tab entry), and the measurement backend
-  for three-cad-viewer's Distance/Properties tools (resolves picked shape ids to
-  in-memory OCP topology, no socket).
-- `src/composables/useChainWorker.ts` — worker lifecycle + reactive state
-  (schema, shapes, building, fieldErrors, report), debounced build, export,
-  measure bridge. `useMockChainWorker.ts` is the `dev:mock` stand-in.
+  (it must be *importable*, the rest are exec'd into globals) → `runtime.py`. It
+  boots with **no design**; the main thread sends `reload-design` (a bundled
+  design's source, or Code-tab contents) to bind one. A `host_bridge` JsModule lets
+  Python post the tessellated Shapes tree straight to the main thread. Scheduler
+  runs one Python call at a time: design reloads and builds **coalesce to
+  latest-wins**, exports are FIFO.
+- `src/python/runtime.py` — holds the active seam as `ActiveDesign` (bound by
+  `reload_design`), and exposes worker-facing helpers: `get_schema_json`,
+  `build_and_show` (validate → `ActiveDesign(params)` build → tessellate →
+  `obj.analyze()`), `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
+  orca123d), and `reload_design` (re-exec a design in place — gallery select / dev
+  hot-reload / Code tab; returns `{ok, schema?, presets?, error?}`, surfacing a bad
+  edit's traceback instead of throwing).
+- `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
+  shapes, building, fieldErrors, report, `reloadError`, `reloading`), debounced
+  `build` and `reloadDesign`, export. `useMockDesignWorker.ts` is the `dev:mock`
+  stand-in (serves the default design's schema fixture; the Code tab is inert).
 - `src/components/` — `BootProgress`, `ParamForm`, `Viewer` (three-cad-viewer
-  wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`.
+  wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`, `AppContent` (the
+  tabbed Parameters/Code + viewer body), `CodeEditor` (lazy Monaco; loads only when
+  the Code tab opens, so Monaco never touches the main bundle).
 
 Full regeneration on every parameter change (no incremental updates) — each
-change re-runs `Model(params)` and re-tessellates the whole chain. First load
-compiles OCP.wasm (tens of seconds); the boot progress bar covers it and is a
+change re-runs `ActiveDesign(params)` and re-tessellates the whole design. First
+load compiles OCP.wasm (tens of seconds); the boot progress bar covers it and is a
 separate UI state from the sub-second per-build spinner.
 
-In dev, editing `chain.py` **hot-reloads the model in place** (worker HMR →
-`reload_model` → `model-reloaded` message) without rebooting Pyodide — sub-second,
-no boot bar. Editing any other asset (worker/`proto.py`/`runtime.py`/…) still does
-a full reload. This is the same path the future Code tab drives.
+In dev, editing a `src/designs/<slug>/design.py` triggers a Vite page reload;
+because the **SharedWorker survives page reloads**, the page reconnects to the
+already-booted backend (no Pyodide reboot) and the Generator re-selects the fresh
+source via `reload-design` — effectively a hot-swap with no boot bar. This is the
+same `reload_design` path the Code tab drives (there, live, with no page reload).
+Editing an engine asset (worker/`proto.py`/`runtime.py`/…) still does a full
+reload *and* reboots the interpreter (those are in the worker's import graph).
 
 ## Version pinning — these move together
 
@@ -142,8 +175,8 @@ Coupled invariants to keep in sync by hand:
   load but this app's code paths don't exercise. `gen:wheels` reads this block to
   resolve requirements, so keep the markers intact.
 
-After changing `chain.py`'s `Parameters`, regenerate the mock-mode schema
-snapshot so `pnpm dev:mock` stays accurate:
+After changing the default design's (`src/designs/chain/design.py`) `Parameters`,
+regenerate the mock-mode schema snapshot so `pnpm dev:mock` stays accurate:
 
 ```sh
 uv run python scripts/gen_schema_fixture.py   # → src/fixtures/schema.json

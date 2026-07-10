@@ -18,7 +18,6 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from '../lib/protocol'
-import chainSrc from '../python/chain.py?raw'
 import installSrc from '../python/install.py?raw'
 import protoSrc from '../python/proto.py?raw'
 import runtimeSrc from '../python/runtime.py?raw'
@@ -34,9 +33,13 @@ const exportQueue: { port: MessagePort, id: number, format: string, params: unkn
 // The port whose build is running right now, so host_bridge's shapes message
 // (emitted during the build) reaches the correct tab. Set around doBuild only.
 let currentBuildPort: MessagePort | null = null
-// Dev-only: pending model hot-reload source (set by the HMR handler). Processed
-// with top priority so the new model is live before the next build runs.
-let pendingReload: string | null = null
+// Pending design swap, processed with top priority so the new design is live
+// before the next build runs. Carries the requesting port + id when it came from
+// a `reload-design` request (reply routes back there); `port: null` marks a dev
+// HMR reload (broadcast to all tabs, no id). Latest-wins.
+let pendingReload:
+  | { source: string, port: MessagePort | null, id?: number }
+  | null = null
 
 // Every connected tab. `post` targets one port; `broadcast` fans out to all
 // (used for boot progress, which is shared across tabs).
@@ -109,26 +112,19 @@ async function initialize(): Promise<void> {
   boot('Loading build123d…', 0.5)
   await pyodide.runPythonAsync('import build123d')
 
-  boot('Loading model…', 0.9)
-  // chain.py pulls its shared form/preview helpers in with `from proto import …`.
-  // Unlike the other assets (exec'd straight into the global namespace), proto
-  // must therefore exist as a real importable module. Write it to Pyodide's home
-  // dir, which is on sys.path — mirroring how proto.py sits next to chain.py on
-  // sys.path natively. It imports build123d/pydantic, so this must follow install.
+  boot('Preparing viewer bridge…', 0.9)
+  // A model module pulls its shared form/preview helpers in with `from proto
+  // import …`. Unlike the other assets (exec'd straight into the global
+  // namespace), proto must therefore exist as a real importable module. Write it
+  // to Pyodide's home dir, which is on sys.path — mirroring how proto.py sits next
+  // to a model.py on sys.path natively. It imports build123d/pydantic, so this
+  // must follow install. runtime.py boots *without* a design (ActiveDesign =
+  // None); the main thread selects one by slug via `reload-design`.
   pyodide.FS.writeFile('/home/pyodide/proto.py', new TextEncoder().encode(protoSrc))
-  await pyodide.runPythonAsync(chainSrc)
-
-  boot('Preparing viewer bridge…', 0.95)
   await pyodide.runPythonAsync(runtimeSrc)
 
   boot('Ready', 1.0)
-  const schemaJson: string = await pyodide.runPythonAsync('get_schema_json()')
-  const presetsJson: string = await pyodide.runPythonAsync('get_presets_json()')
-  const readyMsg: WorkerResponse = {
-    type: 'ready',
-    schema: JSON.parse(schemaJson),
-    presets: JSON.parse(presetsJson),
-  }
+  const readyMsg: WorkerResponse = { type: 'ready' }
   bootState = { kind: 'ready', msg: readyMsg }
   broadcast(readyMsg)
 }
@@ -139,13 +135,17 @@ async function doBuild(params: unknown): Promise<BuildResult> {
   return JSON.parse(resultStr) as BuildResult
 }
 
-// Dev-only: re-exec the model source (chain.py) into the running interpreter and
-// hand back the fresh schema/presets — no Pyodide reboot. Runs through the
-// scheduler (below) so it can't interleave with an in-flight build.
-async function doReloadModel(source: string): Promise<{ schema: unknown, presets: unknown }> {
-  pyodide.globals.set('_model_src', source)
-  const resultStr: string = await pyodide.runPythonAsync('reload_model(_model_src)')
-  return JSON.parse(resultStr) as { schema: unknown, presets: unknown }
+// Re-exec a design source into the running interpreter and hand back the fresh
+// schema/presets — no Pyodide reboot. Drives gallery design-selection, the Code
+// tab, and dev HMR. Runs through the scheduler so it can't interleave with an
+// in-flight build. A bad source resolves to `{ ok: false, error }` (Python
+// traceback) rather than throwing; the previous design stays active.
+async function doReloadDesign(
+  source: string,
+): Promise<{ ok: boolean, schema?: unknown, presets?: unknown, error?: string }> {
+  pyodide.globals.set('_design_src', source)
+  const resultStr: string = await pyodide.runPythonAsync('reload_design(_design_src)')
+  return JSON.parse(resultStr)
 }
 
 async function doExport(params: unknown, format: string): Promise<Uint8Array> {
@@ -170,21 +170,27 @@ function schedule() {
   if (busy || !pyodide)
     return
   if (pendingReload !== null) {
-    const source = pendingReload
+    const { source, port: replyPort, id } = pendingReload
     pendingReload = null
     busy = true
-    doReloadModel(source)
-      .then(({ schema, presets }) => {
-        const s = schema as JsonSchema
-        const p = presets as Preset[]
-        // Refresh the cached ready state so tabs connecting after a reload get
-        // the new schema, then tell current tabs to re-render the form.
-        if (bootState.kind === 'ready') {
-          bootState = { kind: 'ready', msg: { type: 'ready', schema: s, presets: p } }
-        }
-        broadcast({ type: 'model-reloaded', schema: s, presets: p })
+    doReloadDesign(source)
+      .then((res) => {
+        const msg: WorkerResponse = res.ok
+          ? {
+              type: 'design-reloaded',
+              id,
+              ok: true,
+              schema: res.schema as JsonSchema,
+              presets: (res.presets as Preset[]) ?? [],
+            }
+          : { type: 'design-reloaded', id, ok: false, error: res.error }
+        // A reload-design *request* replies to its originating tab; a dev HMR
+        // reload (no port) broadcasts so every tab re-renders.
+        if (replyPort)
+          post(replyPort, msg)
+        else broadcast(msg)
       })
-      .catch(err => broadcast({ type: 'log', stream: 'stderr', text: `model reload failed: ${err?.message ?? err}` }))
+      .catch(err => broadcast({ type: 'log', stream: 'stderr', text: `design reload failed: ${err?.message ?? err}` }))
       .finally(() => {
         busy = false
         schedule()
@@ -273,6 +279,13 @@ function connect(port: MessagePort) {
         exportQueue.push({ port, id: msg.id, format: msg.format, params: msg.params })
         schedule()
         break
+      case 'reload-design':
+        // Latest-wins design swap (a newer request supersedes a queued one). The
+        // `slug` rides along for the main-thread HMR bridge; the worker keys only
+        // on the source it's handed.
+        pendingReload = { source: msg.source, port, id: msg.id }
+        schedule()
+        break
       case 'disconnect':
         cleanupPort(port)
         break
@@ -313,19 +326,14 @@ function formatBootError(err: unknown): string {
 // then spawns a fresh instance on the new (no-cache, dev) code. Tree-shaken from
 // production builds (`import.meta.hot` is statically undefined there).
 if (import.meta.hot) {
-  // The model source (chain.py) is the seam: re-exec it in place instead of
-  // rebooting the whole Pyodide/OCP stack (tens of seconds). This dep-scoped
-  // handler intercepts chain.py?raw changes so they DON'T fall through to the
-  // blanket handler below. It's the same mechanism the future Code tab uses.
-  import.meta.hot.accept('../python/chain.py?raw', (mod) => {
-    const source = (mod as { default?: string } | undefined)?.default
-    if (source != null) {
-      pendingReload = source
-      schedule()
-    }
-  })
-  // Any other change (worker code, proto/runtime/install.py) still needs
-  // a fresh interpreter — full reload.
+  // Design sources (src/designs/<slug>/design.py) are no longer in *this*
+  // worker's import graph — the main thread's manifest owns them. Editing one
+  // triggers a normal Vite reload on the page; because the SharedWorker survives
+  // page reloads, the page reconnects to the *already-booted* backend (no Pyodide
+  // reboot) and the Generator re-selects the fresh source via `reload-design`.
+  //
+  // Any change to code that *is* in the worker graph (worker code,
+  // proto/runtime/install.py) still needs a fresh interpreter — full reload.
   import.meta.hot.accept(() => {
     broadcast({ type: 'reload' });
     (globalThis as unknown as SharedWorkerGlobalScope).close()

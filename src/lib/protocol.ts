@@ -45,6 +45,11 @@ export interface BuildResult {
 export type WorkerRequest
   = | { type: 'build', id: number, params: Record<string, unknown> }
     | { type: 'export', id: number, format: string, params: Record<string, unknown> }
+  // Swap the active design: exec `source` (a design.py) in place and hand back
+  // its fresh schema/presets. Drives both gallery design-selection (a bundled
+  // design's source) and the Code tab (the editor's contents). Latest-wins, like
+  // builds. `slug` identifies the design so dev HMR reloads only when active.
+    | { type: 'reload-design', id: number, source: string, slug: string }
   // A tab going away (dispose / pagehide): the SharedWorker drops this port's
   // per-port scheduler state. The browser tears the worker down once the last
   // port closes, so this is cleanup, not shutdown.
@@ -54,15 +59,26 @@ export type WorkerRequest
 export type WorkerResponse
   = | { type: 'boot', stage: string, progress: number }
     | { type: 'boot-error', message: string }
-    | { type: 'ready', schema: JsonSchema, presets: Preset[] }
+  // The engine (Pyodide/OCP) finished booting. No design is loaded yet — the main
+  // thread selects one by slug and sends `reload-design`, whose reply carries the
+  // schema. So the gallery can warm the engine before any design is chosen.
+    | { type: 'ready' }
     | { type: 'log', stream: 'stdout' | 'stderr', text: string }
     | { type: 'shapes', data: string }
     | ({ type: 'build-result', id: number } & BuildResult)
     | { type: 'export-result', id: number, format: string, bytes?: Uint8Array, error?: string }
-  // Dev-only: the model module (chain.py) was hot-reloaded in place — the Pyodide
-  // stack stayed up. Carries the fresh schema/presets so the form re-renders
-  // without a reboot. Tree-shaken from production (emitted only under import.meta.hot).
-    | { type: 'model-reloaded', schema: JsonSchema, presets: Preset[] }
+  // Reply to `reload-design` (and dev HMR of a design.py — then `id` is absent).
+  // On success carries the fresh schema/presets; on failure `ok:false` + the
+  // Python compile/exec `error` traceback so the Code tab can surface it inline.
+  // The previous design stays active on failure.
+    | {
+      type: 'design-reloaded'
+      id?: number
+      ok: boolean
+      schema?: JsonSchema
+      presets?: Preset[]
+      error?: string
+    }
   // Dev-only HMR signal: the SharedWorker is about to close itself because its
   // code (or a Python asset) changed, so tabs should reload onto fresh code.
   // Never emitted in a production build (the emitting block is tree-shaken).
@@ -113,7 +129,7 @@ export interface JsonSchemaProperty {
 
 /**
  * One choice in a shape/cross-section dropdown. `svg` is generated from the real
- *  build123d outline (see chain.py `_choice_field`) so previews match the geometry.
+ *  build123d outline (see design.py `_choice_field`) so previews match the geometry.
  */
 export interface ShapeOption {
   value: number | string
@@ -123,7 +139,7 @@ export interface ShapeOption {
 }
 
 /**
- * A curated starting-point preset (see chain.py `PRESETS`). `params` is a
+ * A curated starting-point preset (see design.py `PRESETS`). `params` is a
  *  partial parameter set merged over the schema defaults when applied.
  */
 export interface Preset {

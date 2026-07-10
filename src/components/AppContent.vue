@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import type { ChainWorker } from '../composables/useChainWorker'
+import type { DesignWorker } from '../composables/useDesignWorker'
 import type { JsonSchema } from '../lib/protocol'
-import { useClipboard, useDebounceFn, useLocalStorage, useUrlSearchParams } from '@vueuse/core'
+import { useClipboard, useDebounceFn, useLocalStorage } from '@vueuse/core'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { branding } from '../branding'
+import { getDesign } from '../designs/manifest'
+import { decodeParams, encodeParams, exportFilename } from '../lib/paramsUrl'
 import ParamForm from './ParamForm.vue'
 import PrintabilityPanel from './PrintabilityPanel.vue'
-import { decodeParams, encodeParams, exportFilename } from '../lib/paramsUrl'
 
-// The whole app *except* the boot chrome. App.vue keeps BootProgress statically
-// imported (so it paints immediately while the worker boots) and loads this
-// heavy tree — Nuxt UI dashboard, the form, the viewer — asynchronously via
-// <Suspense>. The already-booting worker bundle is handed down as a prop so we
-// never construct a second one.
-const props = defineProps<{ chain: ChainWorker }>()
+// The generator body for one design: a tabbed left pane (Parameters form / Code
+// editor) + the 3D viewer. The engine (worker) is already booted; this component
+// is keyed by slug so each design gets a clean slate. It copes with a
+// not-yet-loaded schema (the design's source is exec'd asynchronously).
+const props = defineProps<{
+  worker: DesignWorker
+  slug: string
+  designName: string
+  blank: boolean
+}>()
 
+// Heavy, lazily-loaded panes — kept out of the main bundle.
 const Viewer = defineAsyncComponent(() => import('./Viewer.vue'))
+const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 
 const {
   schema,
@@ -22,15 +31,47 @@ const {
   building,
   fieldErrors,
   report,
+  reloadError,
+  reloading,
   build,
   exportModel,
-} = props.chain
+  reloadDesign,
+} = props.worker
+
+const route = useRoute()
+const router = useRouter()
 
 const params = ref<Record<string, number | string>>({})
 const exporting = ref<string | null>(null)
 
+// Tabs control only the left pane; the viewer is always shown. A blank starter
+// opens straight on Code (the authoring on-ramp).
+const tabItems = [
+  { label: 'Parameters', icon: 'i-lucide-sliders-horizontal', value: 'parameters' },
+  { label: 'Code', icon: 'i-lucide-code', value: 'code' },
+]
+const activeTab = ref(props.blank ? 'code' : 'parameters')
+
+// The design's source: seeded from the bundled manifest, edited in the Code tab.
+// Each edit hot-swaps the running design via the worker (latest-wins, debounced).
+const source = ref(getDesign(props.slug)?.source ?? '')
+
+// Per-design footer links (Printables, shop, …), scraped from the design's LINKS
+// constant into the manifest. Empty for designs that declare none.
+const designLinks = getDesign(props.slug)?.links ?? []
+
+// Auto-generated link to this design's source `.py` on GitHub, pinned to the
+// build's commit for accuracy (falls back to HEAD outside a git checkout). This
+// replaces the old global commit link with a design-specific one.
+const sourceRef = __GIT_HASH__ === 'dev' ? 'HEAD' : __GIT_HASH__
+const sourceUrl = `${branding.repoUrl}/blob/${sourceRef}/src/designs/${props.slug}/design.py`
+function onSourceChange(next: string) {
+  source.value = next
+  reloadDesign(next, props.slug)
+}
+
 // Split-button: the primary action remembers the last format the user picked.
-const exportFormat = useLocalStorage<'3MF' | 'STEP'>('ucg-export-format', '3MF')
+const exportFormat = useLocalStorage<'3MF' | 'STEP'>('lab-export-format', '3MF')
 const exportItems = computed(() =>
   [[
     {
@@ -48,24 +89,6 @@ const exportItems = computed(() =>
   ]],
 )
 
-const repoUrl = 'https://github.com/jsmnbom/ultimate_chain_generator'
-
-// External project links, rendered as a row of icon buttons in the footer. Add
-// Printables etc. here as they come.
-const links = [
-  { label: 'GitHub', icon: 'i-lucide-github', to: repoUrl },
-]
-
-// Build version: full git hash from the build (shortened for display), linking
-// back to its commit on GitHub. 'dev' outside a git checkout.
-const gitHash = __GIT_HASH__
-const gitHashShort = gitHash === 'dev' ? 'dev' : gitHash.slice(0, 7)
-const commitUrl = gitHash === 'dev' ? repoUrl : `${repoUrl}/commit/${gitHash}`
-
-// Reactive bridge to the URL query (kept in the real search string, before the
-// router's hash, so links stay shareable and independent of the hash router).
-const query = useUrlSearchParams('history')
-
 function defaultsFor(s: JsonSchema): Record<string, number | string> {
   const defaults: Record<string, number | string> = {}
   for (const [name, prop] of Object.entries(s.properties)) {
@@ -74,26 +97,33 @@ function defaultsFor(s: JsonSchema): Record<string, number | string> {
   return defaults
 }
 
-// Seed the form from the schema defaults once the worker is ready, with any
-// params carried in the URL layered on top so a shared link boots into its exact
-// chain. Seeding kicks off the first build (via the params watcher below).
+// Seed the form whenever the schema arrives or changes. On the first load, URL
+// query params layer over the defaults so a shared link boots into its exact
+// configuration. On an in-place schema change (a Code-tab edit that alters
+// Parameters), current values are *preserved* for fields that still exist — a
+// keystroke must not reset the form — with defaults filling any newly-added
+// field. Seeding kicks off a build via the params watcher below.
 watch(schema, (s) => {
   if (!s)
     return
-  params.value = { ...defaultsFor(s), ...decodeParams(query, s) }
+  const defaults = defaultsFor(s)
+  const urlParams = decodeParams(route.query, s)
+  const kept: Record<string, number | string> = {}
+  for (const name of Object.keys(s.properties)) {
+    if (params.value[name] !== undefined)
+      kept[name] = params.value[name]
+  }
+  params.value = { ...defaults, ...urlParams, ...kept }
 }, { immediate: true })
 
-// Mirror the current params into the URL (debounced), carrying only values that
-// differ from the defaults so shared links stay short.
+// Mirror the current params into the URL query (debounced), carrying only values
+// that differ from the defaults so shared links stay short. The path (the design
+// slug) is owned by the router; we only rewrite the query.
 const writeUrl = useDebounceFn((p: Record<string, number | string>) => {
   if (!schema.value)
     return
-  const encoded = encodeParams(p, schema.value)
-  for (const key of Object.keys(query)) {
-    if (!(key in encoded))
-      delete query[key]
-  }
-  Object.assign(query, encoded)
+  const query = encodeParams(p, schema.value)
+  router.replace({ name: 'generator', params: { slug: props.slug }, query })
 }, 200)
 
 // Every param change (initial seed included) requests a debounced, latest-wins
@@ -109,24 +139,7 @@ watch(
   { deep: true },
 )
 
-// Presets are disabled for now — see the commented-out picker in the template and
-// the plumbing kept in useChainWorker/protocol/runtime for when they return.
-//
-// // Presets replace the whole param set (merged over defaults so every field is
-// // present); the URL then updates via the params watcher.
-// function applyPreset(preset: Preset) {
-//   if (!schema.value) return;
-//   params.value = { ...defaultsFor(schema.value), ...preset.params };
-// }
-//
-// const presetItems = computed(() => presets.value.map((p) => p.name));
-//
-// function onPresetSelect(name: string) {
-//   const preset = presets.value.find((p) => p.name === name);
-//   if (preset) applyPreset(preset);
-// }
-
-// Copy a link to the exact current chain.
+// Copy a link to the exact current configuration.
 const { copy, copied } = useClipboard()
 function copyLink() {
   copy(window.location.href)
@@ -143,7 +156,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const base = schema.value ? exportFilename(params.value, schema.value) : 'chain'
+    const base = schema.value ? exportFilename(params.value, schema.value, props.slug) : props.slug
     a.download = `${base}.${format.toLowerCase()}`
     document.body.appendChild(a)
     a.click()
@@ -162,97 +175,136 @@ async function downloadExport(format: 'STEP' | '3MF') {
 <template>
   <!-- Two resizable panes (drag the handle between them). Sizes in rem so the
        control pane matches the old fixed w-96; persisted to localStorage. -->
-  <UDashboardGroup storage="local" storage-key="ucg-layout" unit="rem">
-    <!-- Left: generated form + export -->
-    <UDashboardPanel id="controls" resizable :default-size="24" :min-size="18" :max-size="40" class="bg-white">
-      <header class="flex items-start justify-between gap-2 border-b border-neutral-200 px-5 py-4">
-        <div class="min-w-0">
-          <h1 class="text-lg font-semibold text-neutral-800">
-            Ultimate Chain Generator
-          </h1>
-          <p class="text-sm text-neutral-500">
-            Parametric 3D-printable chains
-          </p>
-        </div>
-        <UButton
-          size="xs"
-          variant="ghost"
-          color="neutral"
-          class="shrink-0"
-          :icon="copied ? 'i-lucide-check' : 'i-lucide-link'"
-          :label="copied ? 'Copied!' : 'Copy link'"
-          @click="copyLink"
-        />
-      </header>
-
-      <div class="min-h-0 grow overflow-y-auto px-5 py-5">
-        <!-- Presets disabled for now. Curated, verified starting points; applying
-             one replaces the whole param set, so the picker holds no persistent
-             selection. Re-enable alongside the script bits in AppContent.vue.
-        <USelectMenu
-          v-if="presetItems.length"
-          :model-value="undefined"
-          :items="presetItems"
-          :search-input="false"
-          placeholder="Load a preset"
-          icon="i-lucide-bookmark"
-          class="mb-5 w-full"
-          @update:model-value="onPresetSelect"
-        />
-        -->
-
-        <ParamForm v-if="schema" v-model="params" :schema="schema" :field-errors="fieldErrors" />
-
-        <div v-if="report" class="mt-6 border-t border-neutral-200 pt-5">
-          <PrintabilityPanel :report="report" />
-        </div>
-      </div>
-
-      <footer class="border-t border-neutral-200 px-5 py-4">
-        <!-- Split button: primary action remembers the last-used format; the
-             dropdown chevron switches between 3MF and STEP. -->
-        <UFieldGroup class="w-full">
-          <UButton
-            class="grow justify-center" color="primary" variant="solid" icon="i-lucide-download"
-            :loading="!!exporting" :disabled="!!exporting" @click="downloadExport(exportFormat)"
-          >
-            {{ exporting ? `Exporting ${exporting}…` : `Export ${exportFormat}` }}
-          </UButton>
-          <UDropdownMenu :items="exportItems" :disabled="!!exporting" :content="{ align: 'end' }">
-            <UButton color="primary" variant="solid" icon="i-lucide-chevron-down" :disabled="!!exporting" />
-          </UDropdownMenu>
-        </UFieldGroup>
-
-        <!-- Project links + build version -->
-        <div class="mt-4 flex items-center justify-between border-t border-neutral-200 pt-3">
-          <div class="flex items-center gap-1">
+  <UDashboardGroup storage="local" storage-key="lab-layout" unit="rem">
+    <!-- Left: tabbed form / code + export -->
+    <UDashboardPanel id="controls" resizable :default-size="24" :min-size="18" :max-size="44" class="bg-white">
+      <header class="flex flex-col border-b border-neutral-200 ">
+        <div class="flex items-start justify-between gap-2 px-5 pt-3">
+          <div class="flex min-w-0 items-start gap-2">
             <UButton
-              v-for="link in links"
-              :key="link.label"
               size="xs"
               variant="ghost"
               color="neutral"
-              :icon="link.icon"
-              :label="link.label"
-              :to="link.to"
-              external
-              target="_blank"
+              icon="i-lucide-arrow-left"
+              :to="{ name: 'gallery' }"
+              title="Back to gallery"
+              class="mt-0.5 shrink-0"
             />
+            <div class="min-w-0">
+              <h1 class="truncate text-lg font-semibold text-neutral-800">
+                {{ designName }}
+              </h1>
+              <p class="text-sm text-neutral-500">
+                {{ branding.galleryName }}
+              </p>
+            </div>
           </div>
           <UButton
             size="xs"
             variant="ghost"
             color="neutral"
-            icon="i-lucide-git-commit-horizontal"
-            :label="gitHashShort"
-            :to="commitUrl"
-            external
-            target="_blank"
-            title="View this build's commit on GitHub"
-            class="font-mono"
+            class="shrink-0"
+            :icon="copied ? 'i-lucide-check' : 'i-lucide-link'"
+            :label="copied ? 'Copied!' : 'Copy link'"
+            @click="copyLink"
           />
         </div>
-      </footer>
+
+        <!-- Tab switcher (controls this pane only; the viewer is always shown). -->
+        <UTabs v-model="activeTab" class="px-5 pt-3 pb-3" :items="tabItems" :content="false" size="sm" />
+      </header>
+
+      <!-- Parameters tab. The footer (export + project links) lives here, pinned
+           at the bottom, so it's specific to a design's parameters and the Code
+           tab gets the full pane height. -->
+      <div v-show="activeTab === 'parameters'" class="flex min-h-0 grow flex-col">
+        <div class="min-h-0 grow overflow-y-auto px-5 py-5">
+          <div v-if="!schema" class="flex items-center gap-2 text-sm text-neutral-400">
+            <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
+            Loading design…
+          </div>
+          <template v-else>
+            <ParamForm v-model="params" :schema="schema" :field-errors="fieldErrors" />
+
+            <div v-if="report" class="mt-6 border-t border-neutral-200 pt-5">
+              <PrintabilityPanel :report="report" />
+            </div>
+          </template>
+        </div>
+
+        <footer class="border-t border-neutral-200 px-5 py-4">
+          <!-- Split button: primary action remembers the last-used format; the
+               dropdown chevron switches between 3MF and STEP. -->
+          <UFieldGroup class="w-full">
+            <UButton
+              class="grow justify-center" color="primary" variant="solid" icon="i-lucide-download"
+              :loading="!!exporting" :disabled="!!exporting || !schema" @click="downloadExport(exportFormat)"
+            >
+              {{ exporting ? `Exporting ${exporting}…` : `Export ${exportFormat}` }}
+            </UButton>
+            <UDropdownMenu :items="exportItems" :disabled="!!exporting || !schema" :content="{ align: 'end' }">
+              <UButton color="primary" variant="solid" icon="i-lucide-chevron-down" :disabled="!!exporting || !schema" />
+            </UDropdownMenu>
+          </UFieldGroup>
+
+          <!-- Per-design links: the design's own LINKS plus an auto-generated
+               link to its source .py on GitHub. -->
+          <div class="mt-4 flex flex-wrap items-center gap-1 border-t border-neutral-200 pt-3">
+            <UButton
+              v-for="link in designLinks"
+              :key="link.url"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              :icon="link.icon"
+              :label="link.label"
+              :to="link.url"
+              external
+              target="_blank"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-file-code"
+              label="Source"
+              :to="sourceUrl"
+              external
+              target="_blank"
+              title="View this design's source on GitHub"
+            />
+          </div>
+        </footer>
+      </div>
+
+      <!-- Code tab: edit the design's source; each edit hot-reloads it. -->
+      <div v-show="activeTab === 'code'" class="flex min-h-0 grow flex-col">
+        <UAlert
+          v-if="reloadError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          class="m-3 mb-0"
+          title="Design failed to load"
+        >
+          <template #description>
+            <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{{ reloadError }}</pre>
+          </template>
+        </UAlert>
+        <Suspense>
+          <CodeEditor
+            :model-value="source"
+            :loading="reloading"
+            class="min-h-0 grow"
+            @update:model-value="onSourceChange"
+          />
+          <template #fallback>
+            <div class="flex grow items-center justify-center text-sm text-neutral-400">
+              Loading editor…
+            </div>
+          </template>
+        </Suspense>
+      </div>
     </UDashboardPanel>
 
     <!-- Right: viewer -->

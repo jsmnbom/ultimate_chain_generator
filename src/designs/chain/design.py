@@ -1,4 +1,4 @@
-"""The chain model — a reference implementation of the ``Design`` seam.
+"""The chain design — a reference implementation of the ``Design`` seam.
 
 This module is the single source of truth for both the form (via
 ``Chain.Parameters.model_json_schema()``) and the geometry (via ``Chain(params)``).
@@ -6,7 +6,7 @@ It is loaded verbatim into the Pyodide worker; nothing here is browser-specific,
 so it can also be imported and exercised natively (see ``README.md``).
 
 It defines exactly one ``Design`` subclass (``Chain``); the runtime discovers it
-with ``proto.load_model``. The future Code tab plugs in at this same seam — its own
+with ``proto.load_design``. The Code tab plugs in at this same seam — its own
 ``Design`` subclass swaps in with no change to the schema / build / export
 pipelines. See ``proto.py`` for the full contract.
 """
@@ -19,12 +19,25 @@ from typing import Callable, ClassVar, Literal, cast
 from build123d import *  # pyright: ignore[reportWildcardImportFromLibrary]
 from proto import *  # pyright: ignore[reportWildcardImportFromLibrary]
 
+# Gallery metadata — plain module-level constants the build-time manifest scrapes
+# (see src/designs/manifest.ts). Co-located with the design so they can't drift;
+# every field is optional (the manifest falls back to the slug). LINKS is the
+# per-design footer link list ({"label", "url"} dicts); each icon is auto-derived
+# from the URL's host.
+NAME = "Chain"
+AUTHOR = "jsmnbom"
+DESCRIPTION = "Parametric 3D-printable interlocking chains."
+LINKS = [
+    {"label": "Printables", "url": "https://www.printables.com/@jsmnbom"},
+    {"label": "GitHub", "url": "https://github.com/jsmnbom/ultimate_chain_generator"},
+]
+
 # --------------------------------------------------------------------------- #
 # Choice types — link outlines and cross-sections
 # --------------------------------------------------------------------------- #
 #
 # These are both form types (Parameters fields, with SVG previews) and geometry
-# builders (ChainLink/Chain sweep along / around them), which is why the model
+# builders (ChainLink/Chain sweep along / around them), which is why the design
 # stays one interconnected module.
 
 

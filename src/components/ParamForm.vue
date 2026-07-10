@@ -132,14 +132,31 @@ function setValue(name: string, value: number | string) {
   emit('update:modelValue', { ...props.modelValue, [name]: value })
 }
 
-function numberFormatOptions(f: SliderField) {
-  if (!f.unit)
-    return { style: 'decimal' }
-  return {
-    style: 'unit',
-    unit: f.unit,
-    unitDisplay: 'narrow',
+// Intl.NumberFormat's `style: 'unit'` only accepts CLDR-sanctioned unit
+// identifiers ("millimeter", "degree", …) and throws a RangeError on anything
+// else ("mm", "°", "links"). Rather than force design authors onto that list,
+// fall back to plain decimal formatting for units Intl can't render, so an
+// unsupported unit degrades to a bare number instead of crashing the form.
+function isSupportedUnit(unit: string): boolean {
+  try {
+    // eslint-disable-next-line no-new
+    new Intl.NumberFormat(undefined, { style: 'unit', unit })
+    return true
   }
+  catch {
+    return false
+  }
+}
+
+function numberFormatOptions(f: SliderField) {
+  if (f.unit && isSupportedUnit(f.unit)) {
+    return {
+      style: 'unit',
+      unit: f.unit,
+      unitDisplay: 'narrow',
+    }
+  }
+  return { style: 'decimal' }
 }
 </script>
 

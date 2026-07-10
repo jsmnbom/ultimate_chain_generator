@@ -3,7 +3,7 @@ import type { PrintabilityReport, ReportStatus } from '../lib/protocol'
 
 // Generic renderer for an analysis report: an overall verdict banner followed by
 // a flat list of labelled value/status findings. Nothing here is chain-specific —
-// it draws whatever items the report carries (see chain.py `analyze`).
+// it draws whatever items the report carries (see design.py `analyze`).
 defineProps<{ report: PrintabilityReport }>()
 
 // Colored classes for the collapsed verdict header (the always-visible summary).

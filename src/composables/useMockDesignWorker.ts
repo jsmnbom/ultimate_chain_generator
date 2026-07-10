@@ -1,13 +1,13 @@
 import type { Shapes } from 'three-cad-viewer'
 import type { FieldError, JsonSchema, Preset, PrintabilityReport } from '../lib/protocol'
-import type { BootStatus } from './useChainWorker'
+import type { BootStatus } from './useDesignWorker'
 import { ref, shallowRef } from 'vue'
 import presetsFixture from '../fixtures/presets.json'
 import schemaFixture from '../fixtures/schema.json'
 import { resolveSchema } from '../lib/resolveSchema'
 
-// Drop-in stand-in for useChainWorker that never boots Pyodide/OCP. Enabled by
-// VITE_MOCK_WORKER (see useChainWorker's dispatch + `pnpm dev:mock`). Lets you
+// Drop-in stand-in for useDesignWorker that never boots Pyodide/OCP. Enabled by
+// VITE_MOCK_WORKER (see useDesignWorker's dispatch + `pnpm dev:mock`). Lets you
 // iterate on the form/layout/export UI without the multi-second CAD-kernel boot.
 //
 // It reports "ready" immediately, serves a real snapshot of the schema (so the
@@ -20,7 +20,7 @@ const MOCK_BUILD_MS = 150
 const MOCK_EXPORT_MS = 400
 
 /**
- * Lightweight bound + relational validation mirroring chain.py's Parameters.
+ * Lightweight bound + relational validation mirroring the chain design's Parameters.
  *  Just enough that the form's inline error UI can be exercised in mock mode.
  */
 function validate(schema: JsonSchema, params: Record<string, unknown>): FieldError[] {
@@ -41,7 +41,7 @@ function validate(schema: JsonSchema, params: Record<string, unknown>): FieldErr
     }
   }
 
-  // Relational rules (form-level, loc: []) — mirror chain.py's _check_relations.
+  // Relational rules (form-level, loc: []) — mirror design.py's _check_relations.
   const { link_thickness: t, link_width: w, link_length: l } = params as Record<string, number>
   if (typeof w === 'number' && typeof t === 'number' && w < t) {
     errors.push({ loc: [], msg: 'link_width must be >= link_thickness', type: 'value_error' })
@@ -53,7 +53,7 @@ function validate(schema: JsonSchema, params: Record<string, unknown>): FieldErr
   return errors
 }
 
-export function useMockChainWorker() {
+export function useMockDesignWorker() {
   const status = ref<BootStatus>('ready')
   const bootStage = ref('Ready (mock)')
   const bootProgress = ref(1)
@@ -65,6 +65,8 @@ export function useMockChainWorker() {
   const building = ref(false)
   const fieldErrors = ref<FieldError[]>([])
   const report = ref<PrintabilityReport | null>(null)
+  const reloadError = ref<string | null>(null)
+  const reloading = ref(false)
 
   let buildTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -112,6 +114,11 @@ export function useMockChainWorker() {
     })
   }
 
+  // No real interpreter to re-exec into: the mock serves the static default-design
+  // schema fixture, so a design swap is a no-op (the Code tab is non-functional in
+  // mock mode). Present only to match the DesignWorker shape.
+  function reloadDesign() {}
+
   return {
     status,
     bootStage,
@@ -123,7 +130,10 @@ export function useMockChainWorker() {
     building,
     fieldErrors,
     report,
+    reloadError,
+    reloading,
     build,
     exportModel,
+    reloadDesign,
   }
 }

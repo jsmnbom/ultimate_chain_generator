@@ -6,7 +6,7 @@ import ShapePreview from './ShapePreview.vue'
 // A rich dropdown for a choice field: each option shows a geometry-derived shape
 // preview. Field-agnostic — the same component renders both the link-outline and
 // the cross-section pickers; the only difference is the `svg` baked into each
-// option by chain.py. A field is rendered with this (vs a slider) purely by having
+// option by design.py. A field is rendered with this (vs a slider) purely by having
 // `options`, so there is no per-field widget branching.
 type UiSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 

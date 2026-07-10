@@ -10,7 +10,7 @@ import type { JsonSchema, JsonSchemaProperty } from './protocol'
  * sibling keywords* (JSON Schema 2020-12) — our `json_schema_extra` (`label`,
  * `options`) and the field `default` sit next to the `$ref`. We overlay the raw
  * property's own keys over the resolved target so the property's siblings always
- * win and nothing authored in chain.py is lost.
+ * win and nothing authored in design.py is lost.
  *
  * This is a deliberately minimal dereferencer (local `#/...` pointers only) — the
  * whole pipeline only ever produces intra-document refs into `$defs`, so a full

@@ -2,7 +2,7 @@
 import type { ShapeOption } from '../lib/protocol'
 
 // Renders the outline SVG that Python generated from the real build123d geometry
-// (chain.py `_outline_svg`). Nothing is drawn by hand here — we just place the
+// (design.py `_outline_svg`). Nothing is drawn by hand here — we just place the
 // exported path(s) into a themed <svg>, so a preview can never disagree with the
 // shape `build()` produces. The `scale(1,-1)` mirrors ExportSVG's own Y-flip
 // (CAD Y-up vs SVG Y-down).

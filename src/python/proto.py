@@ -1,18 +1,19 @@
-"""The model-authoring SDK: the seam a parametric model plugs into.
+"""The design-authoring SDK: the seam a parametric design plugs into.
 
 This module is the stable framework side of the contract (it is written to the
-Pyodide FS as an *importable* module, and sits next to ``chain.py`` on ``sys.path``
-natively). A model — ``chain.py`` today, a Code-tab module tomorrow — imports from
-here and exposes exactly one ``Design`` subclass. Nothing chain-specific lives
-here.
+Pyodide FS as an *importable* module, and sits next to a ``design.py`` on
+``sys.path`` natively). A design — a bundled ``design.py`` or a Code-tab module —
+imports from here and exposes exactly one ``Design`` subclass. Nothing
+design-specific lives here.
 
 The contract, in one place:
 
-* ``class MyModel(Design[MyParams])`` — ``MyParams`` is a pydantic ``BaseModel``
-  whose JSON schema drives the form. Instantiating ``MyModel(params)`` *builds* the
-  geometry into ``self`` (a build123d ``Compound``), ready to tessellate / export.
-* ``MyModel.analyze(self) -> Report`` — optional; returns the printability report.
-* ``MyModel.PRESETS: list[dict]`` — optional; curated starting points.
+* ``class MyDesign(Design[MyParams])`` — ``MyParams`` is a pydantic ``BaseModel``
+  whose JSON schema drives the form. Instantiating ``MyDesign(params)`` *builds*
+  the geometry into ``self`` (a build123d ``Compound``), ready to tessellate /
+  export.
+* ``MyDesign.analyze(self) -> Report`` — optional; returns the printability report.
+* ``MyDesign.PRESETS: list[dict]`` — optional; curated starting points.
 
 Form-hint helpers (``slider_field`` / ``choice_field`` / ``select_field``) attach
 widget metadata to each pydantic ``Field`` via ``json_schema_extra``; each stamps a
@@ -55,7 +56,7 @@ __all__ = [
   "check_interlock",
   "check_floating",
   "Design",
-  "load_model",
+  "load_design",
   "BaseModel",
   "Field",
   "ValidationError",
@@ -331,7 +332,7 @@ class Report:
 #
 # These add a finding to a Report given raw geometry, encapsulating the common
 # FDM printability knowledge (bed-adhesion by contact area, part fusion vs.
-# clearance, floating islands) so a model's ``analyze`` only has to pick *which*
+# clearance, floating islands) so a design's ``analyze`` only has to pick *which*
 # geometry to feed in. Thresholds/labels default to sensible values and are
 # overridable per call. Nothing here is model-specific.
 
@@ -471,7 +472,7 @@ def check_floating(
   label: str = "Floating sections",
   tol: float = _FLOATING_TOL,
 ) -> None:
-  """Flag solids whose lowest point sits above the model's global bed plane (nothing
+  """Flag solids whose lowest point sits above the design's global bed plane (nothing
   anchoring them to the print bed). Value = count of floating solids; ``ok`` when none."""
   solids = shape.solids()
   if not solids:
@@ -490,19 +491,19 @@ def check_floating(
 
 
 # --------------------------------------------------------------------------- #
-# Design — the model seam.
+# Design — the design seam.
 # --------------------------------------------------------------------------- #
 
 
 class Design(Compound, Generic[P]):
-  """Base for a parametric model. A subclass binds its pydantic params type via
+  """Base for a parametric design. A subclass binds its pydantic params type via
   ``Design[MyParams]``; instantiating it with a validated params instance
   *builds* the geometry into ``self`` (a ``Compound``). Override ``analyze`` for a
   printability report; set ``PRESETS`` for curated starting points.
 
   The subclass ``__init__(self, params)`` should store ``self.params = params``,
   build, then call ``super().__init__(...)`` with the resulting children — see
-  ``chain.Chain``."""
+  the ``chain`` design."""
 
   # The pydantic params class, bound automatically from ``Design[MyParams]`` so
   # the form's JSON schema is available before any geometry is built.
@@ -522,10 +523,10 @@ class Design(Compound, Generic[P]):
     return Report()
 
 
-def load_model(namespace: dict) -> type[Design]:
+def load_design(namespace: dict) -> type[Design]:
   """Find the single ``Design`` subclass in an exec'd module's namespace.
 
-  This is the runtime's binding point (and the Code-tab entry): a model module is
+  This is the runtime's binding point (and the Code-tab entry): a design module is
   exec'd, then its one ``Design`` subclass is located here. Raises ``ValueError``
   with a clear message if none — or more than one — is present."""
   found: list[type[Design]] = []

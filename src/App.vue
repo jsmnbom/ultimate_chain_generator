@@ -1,30 +1,19 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
-import BootProgress from './components/BootProgress.vue'
-import { useChainWorker } from './composables/useChainWorker'
+import { provide } from 'vue'
+import { designWorkerKey, useDesignWorker } from './composables/useDesignWorker'
 
-// The worker is created here, at the app root, so its tens-of-seconds Pyodide/OCP
-// boot starts as soon as the (tiny) root mounts — BootProgress is statically
-// imported and paints immediately with live progress. Everything else (the Nuxt
-// UI dashboard, the form, the viewer) is a single heavy async chunk loaded via
-// <Suspense> while the boot runs, so it stays off the critical path. The booting
-// worker bundle is handed down to it as a prop.
-const AppContent = defineAsyncComponent(() => import('./components/AppContent.vue'))
-
-const chain = useChainWorker()
-const { status, bootStage, bootProgress, bootError } = chain
+// The one worker for the whole app, created at the root so its tens-of-seconds
+// Pyodide/OCP boot starts *immediately* — while the user is still browsing the
+// gallery, so opening a design feels instant. It's a SharedWorker, so this single
+// connection (and its booting backend) persists across `/` → `/m/:slug`
+// navigation and is even shared with designs opened in new tabs. Provided down to
+// every route via inject; the views never construct their own.
+const worker = useDesignWorker()
+provide(designWorkerKey, worker)
 </script>
 
 <template>
   <UApp>
-    <!-- Full-screen overlay while booting/on error; the async content mounts and
-         loads underneath so its chunk downloads during the boot. -->
-    <div v-if="status !== 'ready'" class="fixed inset-0 z-50">
-      <BootProgress :stage="bootStage" :progress="bootProgress" :error="bootError" />
-    </div>
-
-    <Suspense>
-      <AppContent :chain="chain" />
-    </Suspense>
+    <RouterView />
   </UApp>
 </template>
