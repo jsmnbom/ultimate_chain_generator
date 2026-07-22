@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FieldError, JsonSchema, JsonSchemaProperty, ShapeOption } from '../lib/protocol'
 import { computed } from 'vue'
+import ShapePreview from './ShapePreview.vue'
 import ShapeSelect from './ShapeSelect.vue'
 
 const props = defineProps<{
@@ -49,7 +50,17 @@ interface SelectField {
   size: UiSize
   options: ShapeOption[]
 }
-type Field = SliderField | SelectField
+// Like a select, but laid out as big inline tiles (a prominent mode toggle) rather
+// than a dropdown. Same option shape; the `widget: "cards"` hint picks this branch.
+interface CardsField {
+  kind: 'cards'
+  name: string
+  label: string
+  description?: string
+  size: UiSize
+  options: ShapeOption[]
+}
+type Field = SliderField | SelectField | CardsField
 
 // A field with a `show_if` hint is rendered only when the current model value
 // matches every entry in it (e.g. brim_diameter shows only when brim === "ears",
@@ -73,6 +84,9 @@ const fields = computed<Field[]>(() =>
       const description = p.description
       const size = resolveSize(p.size)
       const widget = p.widget ?? (p.options ? 'select' : 'slider')
+      if (widget === 'cards' && p.options) {
+        return { kind: 'cards', name, label, description, size, options: p.options }
+      }
       if (widget !== 'slider' && p.options) {
         return { kind: 'select', name, label, description, size, options: p.options }
       }
@@ -180,8 +194,30 @@ function numberFormatOptions(f: SliderField) {
         </span>
       </template>
 
+      <!-- Big side-by-side tiles for a prominent mode toggle (widget: "cards"). -->
+      <div
+        v-if="f.kind === 'cards'"
+        class="grid gap-2"
+        :style="{ gridTemplateColumns: `repeat(${f.options.length}, minmax(0, 1fr))` }"
+      >
+        <button
+          v-for="opt in f.options"
+          :key="opt.value"
+          type="button"
+          class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors"
+          :class="modelValue[f.name] === opt.value
+            ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500 dark:bg-primary-950'
+            : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700'"
+          @click="setValue(f.name, opt.value)"
+        >
+          <ShapePreview v-if="opt.svg" :svg="opt.svg" :size="44" class="mb-0.5 text-neutral-600 dark:text-neutral-300" />
+          <span class="text-sm font-medium">{{ opt.label }}</span>
+          <span v-if="opt.description" class="text-xs text-neutral-500">{{ opt.description }}</span>
+        </button>
+      </div>
+
       <ShapeSelect
-        v-if="f.kind === 'select'"
+        v-else-if="f.kind === 'select'"
         :model-value="modelValue[f.name]"
         :options="f.options"
         :size="f.size"

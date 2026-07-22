@@ -1,6 +1,60 @@
 {
-  "description": "Parameters for a line chain of interlocking links (all lengths in mm).",
+  "description": "Parameters for a chain of interlocking links (all lengths in mm).\n\n``layout`` tiles the links either along a straight line or curled into a flat\nArchimedean spiral (a compact coil that still prints flat); both use the same\nalong-chain pitch, so links interlock identically.",
   "properties": {
+    "layout": {
+      "default": "line",
+      "description": "Arrange the links in a straight line or a flat Archimedean spiral. Both print flat and interlock the same way.",
+      "enum": [
+        "line",
+        "spiral"
+      ],
+      "label": "Layout",
+      "options": [
+        {
+          "description": "Links in a straight row.",
+          "label": "Line",
+          "svg": {
+            "paths": [
+              "M -3.0,0.5 L -1.8,-0.5 L -0.6,0.5 L 0.6,-0.5 L 1.8,0.5 L 3.0,-0.5"
+            ],
+            "viewBox": "-3.045 -0.545 6.09 1.09"
+          },
+          "value": "line"
+        },
+        {
+          "description": "Links curled into a flat coil.",
+          "label": "Spiral",
+          "svg": {
+            "paths": [
+              "M 0.0,0.0 L 0.030812,0.006129 L 0.058049,0.024045 L 0.078364,0.052361 L 0.088858,0.088858 L 0.087269,0.130607 L 0.072134,0.174147 L 0.042903,0.215686 L 0.0,0.251327 L -0.05516,0.277311 L -0.120224,0.290245 L -0.191991,0.287335 L -0.266573,0.266573 L -0.339578,0.226899 L -0.406343,0.168313 L -0.462184,0.091934 L -0.502655,0.0 L -0.523809,-0.104192 L -0.522442,-0.216402 L -0.496306,-0.331621 L -0.444288,-0.444288 L -0.366529,-0.548549 L -0.264492,-0.63854 L -0.140966,-0.708682 L -0.0,-0.753982 L 0.153224,-0.770307 L 0.312581,-0.754638 L 0.471251,-0.705277 L 0.622004,-0.622004 L 0.75752,-0.506159 L 0.870736,-0.360671 L 0.955181,-0.189997 L 1.00531,-0.0 L 1.016805,0.202255 L 0.986834,0.40876 L 0.914249,0.610881 L 0.799719,0.799719 L 0.645789,0.966491 L 0.456849,1.102932 L 0.239029,1.201679 L 0.0,1.256637 L -0.251287,1.263303 L -0.504939,1.21903 L -0.750511,1.12322 L -0.977434,0.977434 L -1.175462,0.785419 L -1.335128,0.553028 L -1.448177,0.28806 L -1.507964,0.0 L -1.509802,-0.300318 L -1.451227,-0.601118 L -1.332191,-0.890141 L -1.15515,-1.15515 L -0.925049,-1.384434 L -0.649207,-1.567325 L -0.337092,-1.694675 L -0.0,-1.759292 L 0.34935,-1.7563 L 0.697297,-1.683423 L 1.029771,-1.541162 L 1.332865,-1.332865 L 1.593405,-1.064679 L 1.799521,-0.745386 L 1.941174,-0.386123 L 2.010619,-0.0 L 2.002798,0.398381 L 1.915619,0.793475 L 1.750133,1.169401 L 1.51058,1.51058 L 1.204309,1.802376 L 0.841565,2.031717 L 0.435155,2.187672 L 0.0,2.261947 L -0.447413,2.249296 L -0.889654,2.147815 L -1.309032,1.959104 L -1.688296,1.688296 L -2.011347,1.343939 L -2.263913,0.937744 L -2.43417,0.484187 L -2.513274,0.0"
+            ],
+            "viewBox": "-2.558274 -2.306947 4.613893 4.111239"
+          },
+          "value": "spiral"
+        }
+      ],
+      "title": "Layout",
+      "type": "string",
+      "widget": "cards"
+    },
+    "spiral_skip": {
+      "default": 20,
+      "description": "How many link-slots to skip at the tight center of the spiral \u2014 raise it to open up the innermost turns.",
+      "label": "Center skip",
+      "maximum": 500,
+      "minimum": 0,
+      "show_if": {
+        "layout": "spiral"
+      },
+      "size": "xs",
+      "sliderMax": 200,
+      "sliderMin": 0,
+      "step": 1,
+      "title": "Spiral Skip",
+      "type": "integer",
+      "unit": null,
+      "widget": "slider"
+    },
     "link_shape": {
       "default": "chamfered",
       "enum": [
@@ -125,9 +179,9 @@
       "default": 6,
       "description": "Number of links in the chain.",
       "label": "Link count",
-      "maximum": 60,
+      "maximum": 500,
       "minimum": 1,
-      "sliderMax": 40,
+      "sliderMax": 200,
       "sliderMin": 1,
       "step": 1,
       "title": "Link Count",

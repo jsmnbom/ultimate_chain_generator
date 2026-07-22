@@ -8,14 +8,21 @@ requires-python = ">=3.13,<3.14"
 # Python assets in `public/python/` are authored and linted against the exact
 # same API surface that runs in the worker. See src/worker/pyodide.worker.ts.
 dependencies = [
+  "bd-warehouse>=0.3.0",
   "build123d==0.11.1",
-  "ocp-tessellate==3.1.2",
+  "ocp-tessellate==3.4.1",
   "orca123d==0.1.1",
   "pydantic>=2.13.4",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.15.16", "cadquery-ocp-stubs>=7.9.3.1.1"]
+dev = [
+  "ruff>=0.15.16",
+  "cadquery-ocp-stubs>=7.9.3.1.1",
+  "ocp-vscode==4.0.0",
+  "pip",
+  "ipykernel"
+]
 
 [tool.ruff]
 indent-width = 2

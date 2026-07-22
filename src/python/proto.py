@@ -49,6 +49,7 @@ __all__ = [
   "slider_field",
   "choice_field",
   "select_field",
+  "cards_field",
   "Status",
   "Report",
   "check_degenerate",
@@ -243,6 +244,19 @@ def select_field(label: str, options: list[dict], **kwargs: Any) -> dict:
   for ``Literal``/enum fields with no geometry preview (e.g. ``brim``)."""
   return {
     "widget": "select",
+    "label": label,
+    "options": options,
+    **kwargs,
+  }
+
+
+def cards_field(label: str, options: list[dict], **kwargs: Any) -> dict:
+  """A small set of mutually-exclusive ``options`` (same shape as ``select_field``)
+  laid out as big side-by-side tiles instead of a dropdown — for a prominent mode
+  toggle where the choice deserves visual weight (e.g. the chain's line/spiral
+  layout). Best kept to two or three options so they fit in a row."""
+  return {
+    "widget": "cards",
     "label": label,
     "options": options,
     **kwargs,

@@ -99,8 +99,9 @@ export interface JsonSchemaProperty {
   // switches on (see ParamForm.vue): "slider" (numeric), "shape" (choice with a
   // geometry-derived preview SVG), "select" (plain enum/Literal dropdown). New
   // parameter types add a value here + a branch there. Set by proto.py's
-  // slider_field / choice_field / select_field.
-  widget?: 'slider' | 'shape' | 'select'
+  // slider_field / choice_field / select_field / cards_field. "cards" is a small
+  // set of mutually-exclusive options laid out as big inline tiles (not a dropdown).
+  widget?: 'slider' | 'shape' | 'select' | 'cards'
   label?: string
   unit?: string
   // Nuxt UI size for the field's widgets (e.g. "lg" for the shape pickers, "xs"

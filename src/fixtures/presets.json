@@ -25,5 +25,16 @@
       "link_thickness": 2.5,
       "cross_section": "dodecagon"
     }
+  },
+  {
+    "name": "Spiral coil",
+    "description": "A long chain curled into a flat spiral coil.",
+    "params": {
+      "layout": "spiral",
+      "link_count": 60,
+      "spiral_skip": 20,
+      "cross_section": "dodecagon",
+      "tilt_mult": 2
+    }
   }
 ]

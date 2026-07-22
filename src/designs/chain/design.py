@@ -156,13 +156,84 @@ _TILT_MULT_MAX = {
 
 
 # --------------------------------------------------------------------------- #
+# Layout previews — schematic outline wires for the line/spiral cards.
+# --------------------------------------------------------------------------- #
+#
+# Like the Choice previews, these are exported straight to SVG from a real
+# build123d ``Wire`` (via ``outline_svg``) so the layout cards render actual
+# geometry rather than a hand-drawn icon. They are schematic (a tilted-link run
+# vs. an Archimedean coil), not the built chain itself.
+
+
+def _line_preview() -> Wire:
+  """A short run of alternately tilted links, suggesting the straight layout."""
+  with BuildLine() as bl:
+    Polyline((-3, 0.5), (-1.8, -0.5), (-0.6, 0.5), (0.6, -0.5), (1.8, 0.5), (3, -0.5))
+  return bl.wire()
+
+
+def _spiral_preview() -> Wire:
+  """A flat Archimedean coil, suggesting the spiral layout."""
+  turns, samples = 2.5, 80
+  pts = []
+  for i in range(samples + 1):
+    t = turns * 2 * math.pi * i / samples
+    r = 0.16 * t
+    pts.append((r * math.cos(t), r * math.sin(t)))
+  with BuildLine() as bl:
+    Polyline(*pts)
+  return bl.wire()
+
+
+# --------------------------------------------------------------------------- #
 # Parameters — the form/validation source of truth
 # --------------------------------------------------------------------------- #
 
 
 class Parameters(BaseModel):
-  """Parameters for a line chain of interlocking links (all lengths in mm)."""
+  """Parameters for a chain of interlocking links (all lengths in mm).
 
+  ``layout`` tiles the links either along a straight line or curled into a flat
+  Archimedean spiral (a compact coil that still prints flat); both use the same
+  along-chain pitch, so links interlock identically."""
+
+  layout: Literal["line", "spiral"] = Field(
+    default="line",
+    json_schema_extra=cards_field(
+      "Layout",
+      [
+        {
+          "value": "line",
+          "label": "Line",
+          "description": "Links in a straight row.",
+          "svg": outline_svg(_line_preview()),
+        },
+        {
+          "value": "spiral",
+          "label": "Spiral",
+          "description": "Links curled into a flat coil.",
+          "svg": outline_svg(_spiral_preview()),
+        },
+      ],
+      description="Arrange the links in a straight line or a flat Archimedean "
+      "spiral. Both print flat and interlock the same way.",
+    ),
+  )
+  spiral_skip: int = Field(
+    default=20,
+    ge=0,
+    le=500,
+    json_schema_extra=slider_field(
+      "Center skip",
+      0,
+      200,
+      step=1,
+      show_if={"layout": "spiral"},
+      size="xs",
+      description="How many link-slots to skip at the tight center of the spiral — "
+      "raise it to open up the innermost turns.",
+    ),
+  )
   link_shape: ChainLinkOutline = Field(
     default=cast(ChainLinkOutline, ChainLinkOutline.chamfered),
     json_schema_extra=choice_field(
@@ -184,9 +255,9 @@ class Parameters(BaseModel):
   link_count: int = Field(
     default=6,
     ge=1,
-    le=60,
+    le=500,
     json_schema_extra=slider_field(
-      "Link count", 1, 40, step=1, description="Number of links in the chain."
+      "Link count", 1, 200, step=1, description="Number of links in the chain."
     ),
   )
   link_length: float = Field(
@@ -378,6 +449,17 @@ class Chain(Design[Parameters]):
         "cross_section": "dodecagon",
       },
     },
+    {
+      "name": "Spiral coil",
+      "description": "A long chain curled into a flat spiral coil.",
+      "params": {
+        "layout": "spiral",
+        "link_count": 60,
+        "spiral_skip": 20,
+        "cross_section": "dodecagon",
+        "tilt_mult": 2,
+      },
+    },
   ]
 
   def __init__(self, params: Parameters):
@@ -410,11 +492,26 @@ class Chain(Design[Parameters]):
     self.tilt = base_tilt + (params.tilt_mult - 1) * face_step
     pitch = inner_long_edge_length
 
+    # Per-link placement: (x, y, heading°). A line runs straight along X with no
+    # heading; a spiral walks a flat Archimedean coil at the same arc-length pitch,
+    # so both interlock identically (see _spiral_placements).
+    if params.layout == "spiral":
+      placements = self._spiral_placements(count, pitch, params.spiral_skip)
+    else:
+      placements = [(i * pitch, 0.0, 0.0) for i in range(count)]
+
     self.base_links: list[Compound] = []
-    for i in range(count):
+    # Each link's long-axis direction in the bed plane — X for a line, the spiral
+    # tangent otherwise. Used to lay mouse-ear brims along the actual contact run.
+    self.link_dirs: list[Vector] = []
+    for i, (x, y, heading) in enumerate(placements):
       rx = self.tilt if i % 2 else -self.tilt
-      loc = Location((i * pitch, 0, 0), (90 + rx, 0, 0))
+      # Inner rotation is the line-mode tilt (long axis along local X, tilt about
+      # X); the outer Z-rotation aligns local X to the spiral tangent (heading=0
+      # for a line leaves it unchanged).
+      loc = Location((x, y, 0), (0, 0, heading)) * Location((0, 0, 0), (90 + rx, 0, 0))
       self.base_links.append(self.link.moved(loc))
+      self.link_dirs.append(Vector(math.cos(math.radians(heading)), math.sin(math.radians(heading))))
 
     z_min = self.base_links[0].faces().sort_by(Axis.Z)[0].bounding_box().min.Z
 
@@ -424,20 +521,70 @@ class Chain(Design[Parameters]):
 
     super().__init__(None, label="chain", children=self.links)
 
+  def _spiral_placements(
+    self, count: int, pitch: float, skip: int
+  ) -> list[tuple[float, float, float]]:
+    """Walk a flat Archimedean spiral ``r(θ) = b·θ`` and return one ``(x, y,
+    heading°)`` per link, spaced ``pitch`` apart in arc length. Slots ``0..skip-1``
+    are skipped so the tight center (where a pitch step wraps too far) is left out.
+
+    The arm spacing (radial gap per turn, ``2π·b``) is auto-derived from the tilted
+    link's footprint perpendicular to travel, so neighbouring turns clear each other
+    — the same "measure the real geometry" approach as ``pitch``."""
+    # Radial extent of a tilted link (its Y footprint), plus a print clearance, is
+    # the minimum a turn must advance so adjacent arms don't collide.
+    tilted = self.link.moved(Location((0, 0, 0), (90 + self.tilt, 0, 0)))
+    bb = tilted.bounding_box()
+    arm_spacing = max(bb.size.Y + self.params.link_thickness, pitch)
+    b = arm_spacing / (2 * math.pi)  # radius growth per radian
+
+    total = skip + count
+    targets = [k * pitch for k in range(1, total + 1)]  # arc length at each slot end
+
+    placements: list[tuple[float, float, float]] = []
+    theta = 0.0
+    s = 0.0
+    dtheta = 0.005  # rad; fine enough that a pitch step lands within tolerance
+    next_i = 0
+    while next_i < total:
+      r = b * theta
+      s += math.sqrt(r * r + b * b) * dtheta
+      theta += dtheta
+      while next_i < total and s >= targets[next_i]:
+        r = b * theta
+        x = r * math.cos(theta)
+        y = r * math.sin(theta)
+        # Spiral tangent angle (dx/dθ, dy/dθ) for r = b·θ.
+        heading = math.degrees(
+          math.atan2(b * math.sin(theta) + r * math.cos(theta),
+                     b * math.cos(theta) - r * math.sin(theta))
+        )
+        if next_i >= skip:
+          placements.append((x, y, heading))
+        next_i += 1
+    return placements
+
   def _add_brim(self, z_min: float, brim: str, brim_diameter: float) -> list[Compound]:
     if brim != "ears" or brim_diameter <= 0:
       return self.base_links
 
     links = []
 
-    for i, link in enumerate(self.base_links):
-      bottom_face_bb = link.faces().sort_by(Axis.Z)[0].bounding_box()
-      center = bottom_face_bb.center()
+    for link, direction in zip(self.base_links, self.link_dirs):
+      # The link rests on the bed along the bottom of its straight run, which lies
+      # along `direction` (X for a line, the spiral tangent otherwise). Find that
+      # run's two ends by projecting the bottom face onto `direction` — orientation-
+      # agnostic, so it's correct for a rotated (spiral) link, where the face's
+      # global-X bbox extremes would sit off the run.
+      bottom_face = link.faces().sort_by(Axis.Z)[0]
+      c = bottom_face.center()
+      center = Vector(c.X, c.Y)
+      half_len = max(
+        abs((Vector(v.X, v.Y) - center).dot(direction)) for v in bottom_face.vertices()
+      )
       ears = [
-        self._brim_ear(
-          Vector(center.X, center.Y), Vector(cx, center.Y), z_min, brim_diameter
-        )
-        for cx in (bottom_face_bb.min.X, bottom_face_bb.max.X)
+        self._brim_ear(center, center + direction * s * half_len, z_min, brim_diameter)
+        for s in (1, -1)
       ]
       links.append(link + ears)
 
@@ -461,9 +608,11 @@ class Chain(Design[Parameters]):
   # The chain is a row of near-vertical, alternately ±tilted loops. Each loop
   # touches the bed only along the bottom of its straight run; how much area that
   # is (a facet strip vs. a knife edge) decides whether the first layer sticks.
-  # Because the chain is translationally periodic with mirror-tilt, every link's
-  # bed contact is identical and every adjacent pair is congruent, so the
-  # analysis is O(1) regardless of link count.
+  # Every link has the same footprint and tilt (both layouts), so bed contact and
+  # lean are one-link measurements. In line mode adjacent pairs are congruent; in
+  # spiral mode the innermost pair (base_links[0]/[1]) has the sharpest heading
+  # change and so bounds the interlock — checking it is conservative. Either way
+  # the analysis is O(1) regardless of link count.
 
   def analyze(self) -> Report:
     """Assess the built chain's printability (bed contact + link interlock + lean).
