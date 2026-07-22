@@ -14,7 +14,7 @@ tessellated with ocp-tessellate and rendered with [three-cad-viewer]. No server.
 | CAD kernel         | OCP.wasm (OpenCascade compiled to WebAssembly)    |
 | CAD library        | build123d **0.11.1**                              |
 | Tessellation       | ocp-tessellate (via ocp_vscode **3.1.2**)         |
-| 3D viewer          | three-cad-viewer **5 (via git submodule)** (three **0.184.0**)    |
+| 3D viewer          | three-cad-viewer **5.0.0** (bundles three **0.184.0**) |
 | Parameter modeling | pydantic                                          |
 
 The pinned versions above move together — see `src/python/install.py`.

@@ -19,7 +19,7 @@
     "@nuxt/ui": "^4.9.0",
     "@vueuse/core": "^14.3.0",
     "monaco-editor": "^0.55.1",
-    "three": "0.184.0",
+    "three-cad-viewer": "5.0.0",
     "vue": "^3.5.39",
     "vue-router": "^5.1.0"
   },

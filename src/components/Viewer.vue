@@ -2,13 +2,9 @@
 import type { ChangeNotification, Shapes } from 'three-cad-viewer'
 import { Display, Viewer as TCVViewer } from 'three-cad-viewer'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-// three-cad-viewer's index.ts imports these as side-effects, but the prod build
-// tree-shakes them out (dev keeps them). Re-import here so the viewer chrome is
-// styled in production. See the css alias in vite.config.ts.
-import 'three-cad-viewer/css/global.css'
-import 'three-cad-viewer/css/ui.css'
-import 'three-cad-viewer/css/treeview.css'
-import 'three-cad-viewer/css/tools.css'
+// The published bundle carries no CSS import of its own — the stylesheet ships
+// as a separate export — so pull it in here to style the viewer chrome.
+import 'three-cad-viewer/css'
 
 const props = defineProps<{
   shapes: Shapes | null
@@ -133,8 +129,7 @@ function createViewer() {
     explodeTool: false,
     zscaleTool: false,
     zebraTool: false,
-    // Studio mode (PBR / env-maps / post-processing) is hidden and its heavy
-    // deps are stubbed out of the bundle (see vite.config.ts / stubs/).
+    // Studio mode (PBR / env-maps / post-processing) is hidden.
     studioTool: false,
   }
   display = new Display(host.value, options)

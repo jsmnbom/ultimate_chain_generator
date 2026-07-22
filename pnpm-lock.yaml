@@ -29,9 +29,9 @@ importers:
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1
-      three:
-        specifier: 0.184.0
-        version: 0.184.0
+      three-cad-viewer:
+        specifier: 5.0.0
+        version: 5.0.0
       vue:
         specifier: ^3.5.39
         version: 3.5.39(typescript@6.0.3)
@@ -2825,6 +2825,12 @@ packages:
   muggle-string@0.4.1:
     resolution: {integrity: sha512-VNTrAak/KhO2i8dqqnqnAHOa3cYBwXEZe9h+D5h/1ZqFSTEFHdM65lR7RoIqq3tBBYavsOXV84NoHXZ0AkPyqQ==}
 
+  n8ao@1.10.1:
+    resolution: {integrity: sha512-hhI1pC+BfOZBV1KMwynBrVlIm8wqLxj/abAWhF2nZ0qQKyzTSQa1QtLVS2veRiuoBQXojxobcnp0oe+PUoxf/w==}
+    peerDependencies:
+      postprocessing: '>=6.30.0'
+      three: '>=0.137'
+
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -2983,6 +2989,11 @@ packages:
   postcss@8.5.16:
     resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
     engines: {node: ^10 || ^12 || >=14}
+
+  postprocessing@6.39.0:
+    resolution: {integrity: sha512-/G6JY8hs426lcto/pBZlnFSkyEo1fHsh4gy7FPJtq1SaSUOzJgDW6f6f1K/+aMOYzK/eQEefyOb3++jPPIUeDA==}
+    peerDependencies:
+      three: '>= 0.168.0 < 0.184.0'
 
   powershell-utils@0.1.0:
     resolution: {integrity: sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A==}
@@ -3265,6 +3276,9 @@ packages:
   tapable@2.3.3:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
+
+  three-cad-viewer@5.0.0:
+    resolution: {integrity: sha512-u/NS7SXhOryZXd4vUhIBmDkRjmI2F6iSRtFaGSuiPAyYk2Y73YlpGdarblGuwWN803B/ynVswpRRcRXGSTyt8g==}
 
   three@0.184.0:
     resolution: {integrity: sha512-wtTRjG92pM5eUg/KuUnHsqSAlPM296brTOcLgMRqEeylYTh/CdtvKUvCyyCQTzFuStieWxvZb8mVTMvdPyUpxg==}
@@ -6814,6 +6828,11 @@ snapshots:
 
   muggle-string@0.4.1: {}
 
+  n8ao@1.10.1(postprocessing@6.39.0(three@0.184.0))(three@0.184.0):
+    dependencies:
+      postprocessing: 6.39.0(three@0.184.0)
+      three: 0.184.0
+
   nanoid@3.3.15: {}
 
   natural-compare@1.4.0: {}
@@ -6958,6 +6977,10 @@ snapshots:
       nanoid: 3.3.15
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postprocessing@6.39.0(three@0.184.0):
+    dependencies:
+      three: 0.184.0
 
   powershell-utils@0.1.0: {}
 
@@ -7281,6 +7304,12 @@ snapshots:
   tailwindcss@4.3.2: {}
 
   tapable@2.3.3: {}
+
+  three-cad-viewer@5.0.0:
+    dependencies:
+      n8ao: 1.10.1(postprocessing@6.39.0(three@0.184.0))(three@0.184.0)
+      postprocessing: 6.39.0(three@0.184.0)
+      three: 0.184.0
 
   three@0.184.0: {}
 
