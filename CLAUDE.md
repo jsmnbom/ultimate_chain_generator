@@ -67,6 +67,12 @@ A design module exposes exactly one **`Design` subclass**:
   footer links, icons auto-derived from the URL host) are scraped by `manifest.ts`
   for the gallery card / generator footer (co-located so they can't drift; no
   Python boot needed to read them).
+- The generator header has a **Screenshot** button that saves a clean PNG of the
+  current view (via the viewer's `captureScreenshot`, axes/marker stripped). It's a
+  general-purpose save, and also the way to make a design's gallery-card
+  **thumbnail**: an optional `src/designs/<slug>/thumb.png` (globbed by
+  `manifest.ts`; cards fall back to a box icon when absent) — take a screenshot and
+  rename it to `thumb.png` in the design's directory.
 
 `runtime.py` binds to this via `proto.load_design(namespace)`, holding the active
 subclass as `ActiveDesign` — it never reaches for loose `build`/`analyze` globals.

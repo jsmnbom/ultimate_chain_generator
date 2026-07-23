@@ -43,6 +43,9 @@ const router = useRouter()
 const params = ref<Record<string, number | string>>({})
 const exporting = ref<string | null>(null)
 
+// Handle on the (async) Viewer, so the Screenshot button can grab a canvas PNG.
+const viewerRef = ref<{ captureScreenshot: () => Promise<string | null> } | null>(null)
+
 // The source view is a layer over the form, not a mode you switch into. Monaco is
 // mounted on first open and then kept alive (hidden with v-show), so reopening is
 // instant and the form underneath never loses its scroll position.
@@ -147,6 +150,22 @@ function copyLink() {
   copy(window.location.href)
 }
 
+// Save a screenshot of the current viewer render as a PNG (named after the design
+// + params, like exports). Doubles as the source for a gallery thumbnail: rename it
+// to `thumb.png` in `src/designs/<slug>/`. Silently no-ops if nothing is rendered.
+async function saveScreenshot() {
+  const dataUrl = await viewerRef.value?.captureScreenshot()
+  if (!dataUrl)
+    return
+  const base = schema.value ? exportFilename(params.value, schema.value, props.slug) : props.slug
+  const a = document.createElement('a')
+  a.href = dataUrl
+  a.download = `${base}.png`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 async function downloadExport(format: 'STEP' | '3MF') {
   if (exporting.value)
     return
@@ -180,7 +199,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
   <UDashboardGroup storage="local" storage-key="lab-layout" unit="rem">
     <!-- Left: tabbed form / code + export -->
     <UDashboardPanel id="controls" resizable :default-size="24" :min-size="18" :max-size="44" class="bg-white">
-      <header class="flex flex-col border-b border-neutral-200">
+      <header class="flex flex-col border-b border-primary-200 bg-primary-50">
         <div class="flex items-start justify-between gap-2 px-5 py-3">
           <div class="flex min-w-0 items-start gap-2">
             <UButton
@@ -201,16 +220,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
               </p>
             </div>
           </div>
-          <div class="flex shrink-0 items-center">
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-code"
-              label="Code"
-              title="View this design's source"
-              @click="openCode"
-            />
+          <div class="flex shrink-0 flex-col items-end">
             <UButton
               size="xs"
               variant="ghost"
@@ -218,6 +228,16 @@ async function downloadExport(format: 'STEP' | '3MF') {
               :icon="copied ? 'i-lucide-check' : 'i-lucide-link'"
               :label="copied ? 'Copied!' : 'Copy link'"
               @click="copyLink"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-camera"
+              label="Screenshot"
+              title="Save a PNG of the current view"
+              :disabled="!shapes"
+              @click="saveScreenshot"
             />
           </div>
         </div>
@@ -254,7 +274,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
             </template>
           </div>
 
-          <footer class="border-t border-neutral-200 px-5 py-4">
+          <footer class="border-t border-neutral-200 px-5 py-2">
             <!-- Split button: primary action remembers the last-used format; the
                  dropdown chevron switches between 3MF and STEP. -->
             <UFieldGroup class="w-full">
@@ -271,29 +291,29 @@ async function downloadExport(format: 'STEP' | '3MF') {
 
             <!-- Per-design links: the design's own LINKS plus an auto-generated
                  link to its source .py on GitHub. -->
-            <div class="mt-4 flex flex-wrap items-center gap-1 border-t border-neutral-200 pt-3">
+            <div class="mt-2 flex justify-between border-t border-neutral-200 pt-1">
+              <div class="flex flex-wrap items-center gap-1">
+                <UButton
+                  v-for="link in designLinks"
+                  :key="link.url"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :icon="link.icon"
+                  :label="link.label"
+                  :to="link.url"
+                  external
+                  target="_blank"
+                />
+              </div>
               <UButton
-                v-for="link in designLinks"
-                :key="link.url"
                 size="xs"
                 variant="ghost"
                 color="neutral"
-                :icon="link.icon"
-                :label="link.label"
-                :to="link.url"
-                external
-                target="_blank"
-              />
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-file-code"
-                label="Source"
-                :to="sourceUrl"
-                external
-                target="_blank"
-                title="View this design's source on GitHub"
+                icon="i-lucide-code"
+                label="View code"
+                title="View this design's source"
+                @click="openCode"
               />
             </div>
           </footer>
@@ -358,7 +378,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
     <!-- Right: viewer -->
     <UDashboardPanel id="viewer" class="bg-neutral-100">
       <Suspense>
-        <Viewer :shapes="shapes" :building="building" />
+        <Viewer ref="viewerRef" :shapes="shapes" :building="building" />
         <template #fallback>
           <div class="flex h-full items-center justify-center text-sm text-neutral-400">
             Loading viewer…

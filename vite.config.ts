@@ -69,7 +69,14 @@ export default defineConfig({
     spaFallback(),
     vueDevTools(),
     vue(),
-    ui(),
+    ui({
+      ui: {
+        colors: {
+          primary: 'pink',
+          neutral: 'zinc',
+        },
+      },
+    }),
     NuxtIconBundle({
       scan: {
         globInclude: [

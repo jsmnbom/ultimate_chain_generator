@@ -269,6 +269,7 @@ class Parameters(BaseModel):
       5,
       80,
       step=0.5,
+      unit="millimeter",
       description="Long axis of each link. Must be at least the link width.",
     ),
   )

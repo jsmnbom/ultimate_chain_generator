@@ -217,6 +217,27 @@ function onResize() {
   viewer.resizeCadView(width, TREE_WIDTH, height, GLASS)
 }
 
+// Capture the current scene as a PNG data URL (a screenshot of the current view —
+// also handy as a gallery thumbnail). getImage() grabs the canvas only (no toolbar)
+// and hides the orientation marker itself; we additionally hide the coordinate axes
+// for a clean shot, then restore them. Returns null when nothing is rendered yet.
+async function captureScreenshot(): Promise<string | null> {
+  if (!viewer || !hasRendered)
+    return null
+  try {
+    viewer.setAxes(false)
+    viewer.setAxes0(false)
+    const { dataUrl } = await viewer.getImage('screenshot')
+    return typeof dataUrl === 'string' ? dataUrl : null
+  }
+  finally {
+    viewer.setAxes(viewerOptions.axes)
+    viewer.setAxes0(viewerOptions.axes0)
+  }
+}
+
+defineExpose({ captureScreenshot })
+
 onMounted(() => {
   createViewer()
   if (props.shapes)
@@ -265,6 +286,7 @@ onBeforeUnmount(() => {
 .fade-leave-active {
   transition: opacity 0.15s ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
@@ -272,7 +294,116 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-.tcv_cad_info_wrapper {
-  display: none !important;
+/* Reskin three-cad-viewer's light theme to design 1b "Studio Pink":
+   frosted-glass floating chrome, a warm near-white backdrop, and a pink accent.
+   Everything is scoped under .tcv_cad_viewer — that both keeps the overrides off
+   the rest of the app and lets them win: the --tcv-* custom properties are
+   re-declared on .tcv_cad_viewer (closer to the chrome than tcv's own
+   [data-theme="light"] host rule, so all descendants inherit these), and the
+   structural rules gain a class of specificity over tcv's single-class rules. */
+.tcv_cad_viewer {
+  /* Anchor the (now absolutely-positioned) floating toolbar to the viewer. */
+  position: relative;
+  margin: 0 !important;
+
+  /* Pink accent — drives the active-tab underline + selected borders. */
+  --tcv-theme-blue: #db2777;
+  /* Frosted-white glass panels (toolbar / tree / info). */
+  --tcv-bg-overlay-color: rgba(255, 255, 255, 0.9);
+  --tcv-bg-overlay-rest-color: rgba(255, 255, 255, 0.82);
+  /* Pink-tint hover / pressed states. Icons keep tcv's dark data-URI glyphs —
+     recoloring those (1b's white-on-pink button) would mean overriding dozens of
+     baked-in SVG urls, so the pink tint is the accent we carry here instead. */
+  --tcv-bg-highlight-color: #fce7f3;
+  --tcv-bg-pressed-color: #fdf2f8;
+  --tcv-bg-pressed-border-color: #db2777;
+  /* Axis + orientation-marker colors (X/Y/Z per 1b). */
+  --tcv-x-color: #dc2626;
+  --tcv-y-color: #16a34a;
+  --tcv-z-color: #2563eb;
+  /* Pink-tinted shadows + tooltip. */
+  --tcv-shadow: rgba(157, 23, 77, 0.25);
+  --tcv-menu-shadow: rgba(157, 23, 77, 0.25);
+  --tcv-bg-tooltip-color: #fdf2f8;
+  --tcv-font-color: #3f3f46;
+
+  --tcv-ui-row-gap: 4px;
+
+  /* Warm near-white radial backdrop, shown through the transparent WebGL canvas
+     (the renderer clears with alpha 0 and .tcv_cad_view is otherwise unpainted). */
+  .tcv_cad_view {
+    background: radial-gradient(circle at 55% 42%, #fffdfe, #faf5f7);
+  }
+
+  /* Float the toolbar as a centered frosted pill over the canvas. tcv sizes it
+     with an inline width/height, so override those with !important and let the
+     buttons determine the pill's natural size. */
+  .tcv_cad_toolbar {
+    position: absolute;
+    z-index: 100;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto !important;
+    height: auto !important;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(8px);
+    border: 1px solid #f4f4f5;
+    box-shadow: 0 6px 20px -8px rgba(157, 23, 77, 0.25);
+  }
+
+  /* Frost the floating tree card, keep it permanently open (glass mode otherwise
+     collapses it behind a "Tools" toggle), and let it read slightly see-through so
+     the model shows behind it. */
+  .tcv_cad_tree {
+    /* display: flex !important; */
+    /* Compact floating card, not a full-height slab — the node list scrolls. */
+    /* max-height: 300px !important; */
+    background-color: rgba(255, 255, 255, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.6) !important;
+    box-shadow: 0 10px 30px -12px rgba(157, 23, 77, 0.45);
+    backdrop-filter: blur(10px);
+    transform: translateY(50%);
+  }
+
+  /* Drop the collapsible "Tools" header (tcv shows it inline in glass mode). */
+  /* .tcv_toggle_tools_wrapper {
+    display: none !important;
+  } */
+
+  /* Remove the Material tab (hide its whole flex cell, not just the input). */
+  .tcv_tabnav span:has(.tcv_tab_material) {
+    display: none !important;
+  }
+
+  /* Pull the canvas flush to the viewer's left edge (glass insets it by 4px). */
+  .tcv_cad_view_glass {
+    left: 0 !important;
+  }
+
+  /* Float the tree card clear of the toolbar pill so they never overlap on
+     narrow panes (toolbar sits at top:12px and is ~42px tall). */
+  /* .tcv_cad_navigation {
+    margin-top: 56px;
+    margin-left: 8px;
+  } */
+
+  /* Warm the tree header + selected-tab text toward 1b's deep pink. */
+  .tcv_tools_label,
+  .tcv_info_label,
+  .tcv_tab-selected {
+    color: #9d174d;
+  }
+
+  .tcv_cad_info_wrapper {
+    display: none !important;
+  }
+
+  .tcv_round {
+    border-radius: 0 !important;
+  }
 }
 </style>
