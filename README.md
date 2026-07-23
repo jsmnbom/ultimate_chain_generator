@@ -87,6 +87,15 @@ First load downloads and compiles OCP.wasm (tens of seconds); a boot progress ba
 covers it. After that, each parameter change re-runs `build()` and re-tessellates
 the whole chain.
 
+## AI use disclaimer
+
+In the interest of transparency about its use: I used AI primarily for tedious,
+mechanical work — large refactors, renames, boilerplate — where the outcome is
+easy to verify. I also leaned on it for implementation *inspiration*, but in
+practice much of that was reverted: I'd take the idea, decide I preferred a
+different approach, and reimplement it my own way. The design decisions and the
+final shape of the code are mine.
+
 [build123d]: https://github.com/gumyr/build123d
 [Pyodide]: https://pyodide.org
 [OCP.wasm]: https://github.com/Yeicor/OCP.wasm
