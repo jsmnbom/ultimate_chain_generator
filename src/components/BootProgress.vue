@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { branding } from '../branding'
 
 const props = defineProps<{
   stage: string
@@ -30,7 +31,7 @@ const hasDetails = computed(() => (props.error?.trim().length ?? 0) > 0 && props
   <div class="flex h-full w-full select-text items-center justify-center bg-neutral-50 p-6">
     <div class="w-full">
       <h1 class="mb-6 text-center text-xl font-semibold text-neutral-800">
-        Ultimate Chain Generator
+        {{ branding.galleryName }}
       </h1>
 
       <div v-if="error" class="max-w-xl mx-auto">

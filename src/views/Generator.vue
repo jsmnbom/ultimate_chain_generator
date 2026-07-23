@@ -62,7 +62,6 @@ const meta = () => getDesign(props.slug)
       :worker="worker"
       :slug="slug"
       :design-name="meta()?.name ?? slug"
-      :blank="meta()?.blank ?? false"
     />
   </Suspense>
 </template>

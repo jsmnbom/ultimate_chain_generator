@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables'
-import { onMounted, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { branding } from '../branding'
 import { injectDesignWorker } from '../composables/useDesignWorker'
 import { designs } from '../designs/manifest'
@@ -10,6 +10,11 @@ import { designs } from '../designs/manifest'
 // dismissible toast lets the user know it's warming up.
 const worker = injectDesignWorker()
 const { status, bootProgress } = worker
+
+// BLANK starters ("start from scratch") are hidden while the source view is
+// read-only — there's no authoring path for them right now. They stay in the
+// manifest, so `/m/<slug>` still resolves for anyone with the URL.
+const cards = computed(() => designs.filter(d => !d.blank))
 
 const gitHash = __GIT_HASH__
 const gitHashShort = gitHash === 'dev' ? 'dev' : gitHash.slice(0, 7)
@@ -52,6 +57,14 @@ watch(status, (s) => {
 
 <template>
   <div class="min-h-full bg-neutral-50">
+    <!-- Boot progress: a thin bar pinned to the top of the viewport (in addition
+         to the toast). Fixed so its appearance/removal never reflows the grid. -->
+    <UProgress
+      v-if="status === 'booting'"
+      :model-value="Math.round(bootProgress * 100)"
+      size="sm"
+      class="fixed inset-x-0 top-0 z-50"
+    />
     <div class="mx-auto max-w-6xl px-6 py-10">
       <header class="mb-8 flex items-end justify-between gap-4">
         <div class="min-w-0">
@@ -78,25 +91,17 @@ watch(status, (s) => {
         </div>
       </header>
 
-      <!-- Boot progress hint at the top of the grid (in addition to the toast). -->
-      <div v-if="status === 'booting'" class="mb-6">
-        <UProgress :model-value="Math.round(bootProgress * 100)" size="sm" />
-      </div>
-
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <RouterLink
-          v-for="d in designs"
+          v-for="d in cards"
           :key="d.slug"
           :to="{ name: 'generator', params: { slug: d.slug } }"
           class="group focus:outline-none"
         >
           <div
-            class="flex h-full flex-col overflow-hidden rounded-xl border bg-white transition
-                   hover:-translate-y-0.5 hover:shadow-md group-focus-visible:ring-2
-                   group-focus-visible:ring-primary-500"
-            :class="d.blank
-              ? 'border-dashed border-neutral-300'
-              : 'border-neutral-200'"
+            class="flex h-full flex-col overflow-hidden rounded-xl border border-neutral-200
+                   bg-white transition hover:-translate-y-0.5 hover:shadow-md
+                   group-focus-visible:ring-2 group-focus-visible:ring-primary-500"
           >
             <!-- Thumbnail / placeholder -->
             <div
@@ -108,11 +113,7 @@ watch(status, (s) => {
                 :alt="d.name"
                 class="h-full w-full object-cover"
               >
-              <UIcon
-                v-else
-                :name="d.blank ? 'i-lucide-plus' : 'i-lucide-box'"
-                class="size-10"
-              />
+              <UIcon v-else name="i-lucide-box" class="size-10" />
             </div>
 
             <div class="flex grow flex-col gap-1 p-4">

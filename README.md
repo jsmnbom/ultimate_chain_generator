@@ -1,8 +1,10 @@
-# Ultimate Chain Generator
+# Paws & Parts
 
-Generate 3D-printable chains parametrically, entirely in the browser. Python
-([build123d]) runs client-side via [Pyodide] + [OCP.wasm]; geometry is
-tessellated with ocp-tessellate and rendered with [three-cad-viewer]. No server.
+A browser playground for parametric 3D-printable designs, running entirely
+client-side. Python ([build123d]) runs in the browser via [Pyodide] + [OCP.wasm];
+geometry is tessellated with ocp-tessellate and rendered with [three-cad-viewer].
+No server. Paws & Parts is the design gallery; **build123d-lab** is the reusable
+engine underneath it.
 
 ## Stack
 

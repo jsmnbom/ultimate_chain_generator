@@ -29,7 +29,7 @@ AUTHOR = "jsmnbom"
 DESCRIPTION = "Parametric 3D-printable interlocking chains."
 LINKS = [
     {"label": "Printables", "url": "https://www.printables.com/@jsmnbom"},
-    {"label": "GitHub", "url": "https://github.com/jsmnbom/ultimate_chain_generator"},
+    {"label": "GitHub", "url": "https://github.com/jsmnbom/paws-and-parts"},
 ]
 
 # --------------------------------------------------------------------------- #

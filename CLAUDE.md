@@ -70,9 +70,8 @@ A design module exposes exactly one **`Design` subclass**:
 
 `runtime.py` binds to this via `proto.load_design(namespace)`, holding the active
 subclass as `ActiveDesign` — it never reaches for loose `build`/`analyze` globals.
-The engine boots **without** a design; the frontend selects one by slug (or the
-Code tab hands over editor contents) and `reload_design(source)` execs it and
-rebinds `ActiveDesign`. Keep the contract clean; don't leak chain-specifics into
+The engine boots **without** a design; the frontend selects one by slug and
+`reload_design(source)` execs it and rebinds `ActiveDesign`. Keep the contract clean; don't leak chain-specifics into
 `proto.py`/the worker/runtime/frontend.
 
 - Cross-field rules (`link_width >= link_thickness`, etc.) live in a pydantic
@@ -116,7 +115,7 @@ touching cross-boundary code.
   `exec`s the Python assets in order: `install.py` → writes `proto.py` to the FS
   (it must be *importable*, the rest are exec'd into globals) → `runtime.py`. It
   boots with **no design**; the main thread sends `reload-design` (a bundled
-  design's source, or Code-tab contents) to bind one. A `host_bridge` JsModule lets
+  design's source) to bind one. A `host_bridge` JsModule lets
   Python post the tessellated Shapes tree straight to the main thread. Scheduler
   runs one Python call at a time: design reloads and builds **coalesce to
   latest-wins**, exports are FIFO.
@@ -125,16 +124,22 @@ touching cross-boundary code.
   `build_and_show` (validate → `ActiveDesign(params)` build → tessellate →
   `obj.analyze()`), `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
   orca123d), and `reload_design` (re-exec a design in place — gallery select / dev
-  hot-reload / Code tab; returns `{ok, schema?, presets?, error?}`, surfacing a bad
-  edit's traceback instead of throwing).
+  hot-reload; returns `{ok, schema?, presets?, error?}`, surfacing a bad edit's
+  traceback instead of throwing).
 - `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
   shapes, building, fieldErrors, report, `reloadError`, `reloading`), debounced
   `build` and `reloadDesign`, export. `useMockDesignWorker.ts` is the `dev:mock`
-  stand-in (serves the default design's schema fixture; the Code tab is inert).
+  stand-in (serves the default design's schema fixture).
 - `src/components/` — `BootProgress`, `ParamForm`, `Viewer` (three-cad-viewer
   wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`, `AppContent` (the
-  tabbed Parameters/Code + viewer body), `CodeEditor` (lazy Monaco; loads only when
-  the Code tab opens, so Monaco never touches the main bundle).
+  form + viewer body), `CodeEditor` (lazy Monaco; loads only when the source view is
+  first opened, so Monaco never touches the main bundle). The source view is
+  **read-only** and presented as a layer that slides over the form inside the
+  controls pane (a "Code" button in the header opens it; ✕ / Esc closes it) — live
+  edits hot-swapping the design on every keystroke outran the error surface, so
+  `CodeEditor` doesn't emit and `AppContent` doesn't call `reloadDesign`. With no
+  authoring path, `BLANK` designs are filtered out of the gallery
+  (`src/views/Gallery.vue`) while still reachable at `/m/<slug>`.
 
 Full regeneration on every parameter change (no incremental updates) — each
 change re-runs `ActiveDesign(params)` and re-tessellates the whole design. First
@@ -144,9 +149,7 @@ separate UI state from the sub-second per-build spinner.
 In dev, editing a `src/designs/<slug>/design.py` triggers a Vite page reload;
 because the **SharedWorker survives page reloads**, the page reconnects to the
 already-booted backend (no Pyodide reboot) and the Generator re-selects the fresh
-source via `reload-design` — effectively a hot-swap with no boot bar. This is the
-same `reload_design` path the Code tab drives (there, live, with no page reload).
-Editing an engine asset (worker/`proto.py`/`runtime.py`/…) still does a full
+source via `reload-design` — effectively a hot-swap with no boot bar. Editing an engine asset (worker/`proto.py`/`runtime.py`/…) still does a full
 reload *and* reboots the interpreter (those are in the worker's import graph).
 
 ## Version pinning — these move together

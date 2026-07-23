@@ -9,8 +9,9 @@ rename ``MyDesign``, and grow it. See ``proto.py`` for the full contract and the
 from build123d import *  # pyright: ignore[reportWildcardImportFromLibrary]
 from proto import *  # pyright: ignore[reportWildcardImportFromLibrary]
 
-# Gallery metadata. BLANK flags this as the "start from scratch" card; opening it
-# lands on the Code tab (see src/designs/manifest.ts).
+# Gallery metadata. BLANK flags this as the "start from scratch" card. The card is
+# currently hidden (see src/views/Gallery.vue) — the in-app source view is read-only,
+# so there's no authoring path; this file stays as the scaffold to copy.
 NAME = "Start from scratch"
 DESCRIPTION = "A minimal Design scaffold to build your own model on."
 BLANK = True

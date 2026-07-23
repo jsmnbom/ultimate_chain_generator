@@ -22,7 +22,7 @@ export interface Branding {
   defaultDesign: string
 }
 
-const repoUrl = 'https://github.com/jsmnbom/ultimate_chain_generator'
+const repoUrl = 'https://github.com/jsmnbom/paws-and-parts'
 
 export const branding: Branding = {
   engineName: 'build123d-lab',
